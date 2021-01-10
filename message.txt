@@ -1,0 +1,10 @@
+Hello ${PERSON_NAME},
+
+Ceci est un message de test d'envoi automatique de mail
+envoyé par "expertduneuf@hotmail.com"...
+
+Bon week-end à toi !
+
+Bien à toi
+
+Mike
