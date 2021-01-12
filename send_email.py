@@ -1,12 +1,21 @@
 """Send an email."""
 
 import smtplib
-import pdb
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from os import environ
 from string import Template
 
+import pdb
+
+# altarea credential
+ALTA_LOGIN = environ['ALTAREA_LOGIN']
+ALTA_PASSW = environ['ALTAREA_PASSWORD']
+# email credential
+MAIL_LOGIN = environ['EDN_LOGIN']
+MAIL_PASSW = environ['EDN_PASSWORD']
 
 def get_contacts(filename):
     """Read contacts.
@@ -34,30 +43,20 @@ def read_template(filename):
     return Template(template_file_content)
 
 
-def main():
-    # set up thhhe SMTP server
-    # Gmail SMTP setup settings:
-    # SMTP username: Your Gmail address.
-    # SMTP password: Your Gmail password.
-    # SMTP server address: smtp.gmail.com.
-    # Gmail SMTP port (TLS): 587.
-    # SMTP port (SSL): 465.
-    # SMTP TLS/SSL required: yes.
-
-    # pdb.set_trace()
-
-    # s = smtplib.SMTP(host='smtp.gmail.com', port=587)
-    # s = smtplib.SMTP(host='pop.mail.yahoo.com', port=995)
-    # s = smtplib.SMTP(host='smtp-mail.outlook.com', port=587)
+def open_smtp_session():
+    """Create SMTPsession."""
+    # use hotmail with port
     s = smtplib.SMTP(host='smtp.office365.com', port=587)
-    # s = smtplib.SMTP(host='smtp-mail.outlook.com', port=587)
+    
+    # enable security
     s.starttls()
-    # s.login(environ['YOUTUBE_LOGIN'], environ['YOUTUBE_PASSWORD'])  # gmail
-    # s.login('mike_kabika@yahoo.com', 'sbmhyh5s@JC777')  # yahoo
-    # s.login('mikestyl75@hotmail.com', 'sbmhyh5s@JC777')
-    # s.login('davidnabais7@outlook.com', '29061984David!')
-    # s.login('davidnabais7@hotmail.com', '29061984David!')
-    s.login('expertduneuf@hotmail.com', '29061984David!')
+    
+    # login with email credential
+    s.login(MAIL_LOGIN, MAIL_PASSW)
+    return s
+
+
+def main():
 
     # read contacts
     names, emails = get_contacts('contact.txt')
@@ -67,25 +66,46 @@ def main():
     for name, email in zip(names, emails):
         msg = MIMEMultipart()  # create a message
 
-        # add in  the actual person name to the message template*
+        # add in the actual person name to the message template
         message = message_template.substitute(PERSON_NAME=name.title())
 
-        # set up the parameters of the message
-        msg['From']='expertduneuf@hotmail.com'
+        # set up the parameters of the message (MIME)
+        msg['From']=MAIL_LOGIN
         msg['To']=email
-        msg['Subject']="This is a test"
+        msg['Subject']="Envoi de mail avec fichier"
 
-        # add in the messge body
+        # add in the message body
         msg.attach(MIMEText(message, 'plain'))
-
+        
+        # add file to attach
+        attach_filename = "vignette1.jpeg"
+        
+        # open the file as binary mode
+        attach_file = open(attach_filename, 'rb')
+        
+        # set up the payload
+        payload = MIMEBase('application', 'octate-stream')
+        payload.set_payload((attach_file).read())
+        
+        # encode the attachment
+        encoders.encode_base64(payload)
+        
+        # add payload header with filename
+        payload.add_header('Content-Decomposition',
+                           'attachment', filename=attach_filename)
+        msg.attach(payload)
+        
         # send the message via the server set up earlier
+        s = open_smtp_session()
+        # s.sendmail(msg)
         s.send_message(msg)
 
         del msg
 
     # Terminate the SMTP session and close the connection
     s.quit()
+    print('Mail Sent')
 
-
+# driver.get_screenshot_as_file('shot.png')
 if __name__ == '__main__':
     main()
