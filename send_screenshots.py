@@ -18,10 +18,9 @@ MAILBOX_HOST = 'smtp.office365.com'
 MAILBOX_PORT = 587
 
 # image's path
-DIRNAME = os.path.dirname(__file__) 
+DIRNAME = os.path.dirname(__file__)
 IMG_FOLDER = os.path.normpath(os.path.join(DIRNAME, 'images'))
 IMG_LIST = os.listdir(IMG_FOLDER)
-
 
 # set timecode on email's subject
 locale.setlocale(locale.LC_TIME, "fr_FR")
@@ -45,7 +44,7 @@ def get_users(filename):
 
 
 def read_template(filename):
-    """Read template
+    """Read template.
 
     Function to read the template from a given template file
     and return it.
