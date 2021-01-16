@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 import time
-from os import environ
 
 import pdb
 
@@ -23,8 +22,8 @@ except ModuleNotFoundError as e:
 DIRNAME = os.path.dirname(__file__)
 IMG_FOLDER = os.path.normpath(os.path.join(DIRNAME, 'images'))
 
-LOGIN = environ["ALTAREA_LOGIN"]
-PASSWORD = environ["ALTAREA_PASSWORD"]
+LOGIN = os.environ["ALTAREA_LOGIN"]
+PASSWORD = os.environ["ALTAREA_PASSWORD"]
 ALTAREA_URL = "https://altarea-partenaires.com"
 IDF_REGION = "Ile-de-France"
 
@@ -49,24 +48,30 @@ LOGGER = logging.getLogger()
 
 def grab():
     """Grab screenshots."""
-    # set up the driver
-    driver = chrome_driver(EXECUTABLE_PATH)
     try:
+        # set up the driver
+        driver = chrome_driver(EXECUTABLE_PATH)
+
         # go to website of concern
         driver.get(ALTAREA_URL)
+        time.sleep(5)
         LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
 
-        # enter your session
+        # open your session
         if not connect(driver):
-            LOGGER.info("Plusieurs causes peuvent être à l'origine de l'interruption de ce processus")
+            LOGGER.warning("Plusieurs causes peuvent être à l'origine de l'interruption de ce processus")
             return None
 
         # handle the modal element
-        handle_modal(driver)
+        locator = r"//*[@id='first_sign-in_modal']/div/div/div[1]/button"
+        handle_modal(driver, locator)
         
         # search by region of concern
         LOGGER.info("Lancement de la recherche par critères")
         select_by_region(driver, IDF_REGION)
+
+        # collect data
+        get_program_data(driver)
 
     except:
         raise
@@ -75,23 +80,61 @@ def grab():
         driver.quit()
 
 
-def chrome_driver(executable_path, options, t=10):
+def get_by_id(driver, locator):
+    """Return an element from its id locator."""
+    try:
+        element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, locator)))
+        if not isinstance(element, WebElement):
+            return None
+        return element
+    except:
+        LOGGER.error("An error occurred when selecting from: %s", locator)
+        return None
+
+
+def get_by_xpath(driver, locator):
+    """Return an element from its xpath locator."""
+    try:
+        element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, locator)))
+        if not isinstance(element, WebElement):
+            return None
+        return element
+    except:
+        LOGGER.error("An error occurred when selecting from: %s", locator)
+        return None
+
+
+def get_by_tag_name(driver, locator):
+    """Return an element from its tag name locator."""
+    try:
+        element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.TAG_NAME, locator)))
+        if not isinstance(element, WebElement):
+            return None
+        return element
+    except:
+        LOGGER.error("An error occurred when selecting from: %s", locator)
+        return None
+
+
+def chrome_driver(executable_path, t=10):
     """Return chrome driver."""
-    driver = webdriver.Chrome(executable_path, options=options)
-    driver.maximize_window()
+    driver = webdriver.Chrome(executable_path)
     driver.implicitly_wait(int(t))
+    driver.maximize_window()
     return driver
 
 
 def connect(driver):
     """Connect to a session."""
     try:
-        login_modal = driver.find_element_by_xpath(
-            '/html/body/header/div/div/div[2]/div/button')
+        login_modal = get_by_xpath(driver,
+            r"/html/body/header/div/div/div[2]/div/button")
         if login_modal.get_attribute("data-target") == "#login-modal":
             login_modal.click()
             LOGGER.info("Lancement de l'authentification")
-            driver.get_screenshot_as_file('images/shot_login_modal.png')
 
             if not sign_in(driver):
                 return False
@@ -101,14 +144,16 @@ def connect(driver):
     else:
         return True
 
+
 def sign_in(driver):
     """Fill in the login fields with your credentials."""
     try:
         LOGGER.info("Saisie de l'identifiant")
-        driver.find_element_by_id('login-email').send_keys(LOGIN)
+        get_by_id(driver, 'login-email').send_keys(LOGIN)
         LOGGER.info("Saisie du mot de passe")
-        driver.find_element_by_id('login-password').send_keys(PASSWORD)
-        driver.find_element_by_xpath("//*[@id='dashboardContent']/form/div[2]/div/button").click()
+        get_by_id(driver, 'login-password').send_keys(PASSWORD)
+        get_by_xpath(driver,
+            r"//*[@id='dashboardContent']/form/div[2]/div/button").click()
         if not wait_signing_in(driver):
             return False
     except:
@@ -121,13 +166,15 @@ def wait_signing_in(driver):
     """Wait while signing in."""
     try:
         i = 0
+        LOG_MSG = r"https://altarea-partenaires.com/wp-login.php"
+        ERR_MSG = r"Une erreur critique est survenue sur votre site"
+        HOME_URL = r"https://altarea-partenaires.com/accueil/"
         LOGGER.info("En attente de chargement de la page...")
         while True:
-            if driver.current_url == "https://altarea-partenaires.com/wp-login.php":
-                LOGGER.warning("Une erreur critique est survenue sur votre site")
-                driver.get_screenshot_as_file('images/shot_erreur.png')
+            if driver.current_url == LOG_MSG:
+                LOGGER.warning("%s", ERR_MSG)
                 return False
-            if driver.current_url == "https://altarea-partenaires.com/accueil/":
+            if driver.current_url == HOME_URL:
                 LOGGER.info("Connexion réussie")
                 break
             if i == 30:
@@ -141,11 +188,10 @@ def wait_signing_in(driver):
         return True
 
 
-def handle_modal(driver):
+def handle_modal(driver, locator):
     """Handle the modal element if present."""
     try:
-        first_modal = driver.find_element_by_xpath(
-            "//*[@id='first_sign-in_modal']/div/div/div[1]/button")
+        first_modal = driver.find_element_by_xpath(locator)
         first_modal.is_displayed()
     except:
         LOGGER.warning("Il n'y a pas de fenêtre publicitaire")
@@ -156,6 +202,7 @@ def handle_modal(driver):
 
 def select_by_region(driver, region):
     """Select a region."""
+    LOGGER.info("Chargement des informations pour la région Ile-de-France")
     dept_combo_box = driver.find_element_by_xpath(
         "//*[@id='select2-departements-container']")
     submit_by_program = driver.find_element_by_xpath(
@@ -166,13 +213,48 @@ def select_by_region(driver, region):
     action.send_keys(Keys.ENTER)
     action.move_to_element(submit_by_program).click()
     action.perform()
-    LOGGER.info("Chargement des informations pour la région Ile-de-France")
-    driver.get_screenshot_as_file('images/shot_idf.png')
+    time.sleep(3)
 
+
+def get_program_data(driver):
+    """ Get prgramm data."""
+    xpath_tmpl = r"//*[@id='results-prog']/div[{}]"
+    programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
+    data_count = int(driver.find_element_by_id('results-prog').get_attribute('data-count'))
+    LOGGER.info("Data count: %d", data_count)
+
+    # pdb.set_trace()
+    for i, a_program in enumerate(programs):
+        commune_name = a_program.find_element_by_class_name('font-bold').text
+        LOGGER.info("Commune: %s", commune_name)
+
+        nb_lgt_dispo = a_program.find_element_by_class_name('highlight-keys').text
+        long_nb_lgt_dispo = ' '.join(nb_lgt_dispo.split('\n'))
+        LOGGER.info("Nb logement dispo: %s", long_nb_lgt_dispo)
+
+        action = ActionChains(driver)
+        ele = a_program.find_element_by_xpath(xpath_tmpl.format(i+1))
+        LOGGER.info("Program xpath: %s", xpath_tmpl.format(i+1))
+        action.move_to_element(ele).perform()
+        time.sleep(2)
+
+        # save screenshot
+        filename = "images/shot_{}_{}.png".format(
+            '_'.join(commune_name.split()),
+            '_'.join(str(nb_lgt_dispo.split('\n')[0]).split()))
+        LOGGER.info("Shot filename: %s", filename)
+        driver.get_screenshot_as_file(filename)
+        time.sleep(2)
+        LOGGER.info("end Program \n")
+        # pdb.set_trace()
+
+    # next_button = driver.find_element_by_class_name('next')
+    # prev_button = driver.find_element_by_class_name('prev')
 
 def main():
     """Process the capture of pictures."""
     try:
+        LOGGER.info("\n")
         LOGGER.info("Lancement du programme")
         # launch grabbing
         grab()
@@ -190,6 +272,7 @@ def main():
     finally:
         print("\n> Fin du processus")
         LOGGER.info("Fin du processus")
+
 
 if __name__ == '__main__':
     main()
