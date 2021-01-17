@@ -20,12 +20,15 @@ except ModuleNotFoundError as e:
     print("Some Modules are missing: {}".format(e))
 
 DIRNAME = os.path.dirname(__file__)
-IMG_FOLDER = os.path.normpath(os.path.join(DIRNAME, 'images'))
+IMG_BASE = os.path.normpath(os.path.join(DIRNAME, 'images/base'))
+IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'images/mail'))
+IMG_TEMP = os.path.normpath(os.path.join(DIRNAME, 'images/temp'))
 
 LOGIN = os.environ["ALTAREA_LOGIN"]
 PASSWORD = os.environ["ALTAREA_PASSWORD"]
 ALTAREA_URL = "https://altarea-partenaires.com"
 IDF_REGION = "Ile-de-France"
+PROGRAMS_PER_PAGE = 12
 
 # WEBDRIVER
 EXECUTABLE_PATH = "C:\Program Files (x86)\chromedriver.exe"
@@ -48,6 +51,7 @@ LOGGER = logging.getLogger()
 
 def grab():
     """Grab screenshots."""
+    state = False
     try:
         # set up the driver
         driver = chrome_driver(EXECUTABLE_PATH)
@@ -60,6 +64,7 @@ def grab():
         # open your session
         if not connect(driver):
             LOGGER.warning("Plusieurs causes peuvent être à l'origine de l'interruption de ce processus")
+            state = False
             return None
 
         # handle the modal element
@@ -72,12 +77,17 @@ def grab():
 
         # collect data
         get_program_data(driver)
+        state = True
 
-    except:
-        raise
+    except Exception as ex:
+        LOGGER.error("Un problème est survenu : %s", ex)
+        state = False
+        return None
 
     finally:
         driver.quit()
+
+    return state
 
 
 def get_by_id(driver, locator):
@@ -217,47 +227,96 @@ def select_by_region(driver, region):
 
 
 def get_program_data(driver):
-    """ Get prgramm data."""
-    xpath_tmpl = r"//*[@id='results-prog']/div[{}]"
-    programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
-    data_count = int(driver.find_element_by_id('results-prog').get_attribute('data-count'))
-    LOGGER.info("Data count: %d", data_count)
+    """ Get program data."""
+    all_programs = int(driver.find_element_by_id('results-prog').get_attribute('data-count'))
+    LOGGER.info("Quantité des programmes immobiliers : %d", all_programs)
+    pages = number_of_page(all_programs, PROGRAMS_PER_PAGE)
 
     # pdb.set_trace()
-    for i, a_program in enumerate(programs):
-        commune_name = a_program.find_element_by_class_name('font-bold').text
-        LOGGER.info("Commune: %s", commune_name)
-
-        nb_lgt_dispo = a_program.find_element_by_class_name('highlight-keys').text
-        long_nb_lgt_dispo = ' '.join(nb_lgt_dispo.split('\n'))
-        LOGGER.info("Nb logement dispo: %s", long_nb_lgt_dispo)
-
-        action = ActionChains(driver)
-        ele = a_program.find_element_by_xpath(xpath_tmpl.format(i+1))
-        LOGGER.info("Program xpath: %s", xpath_tmpl.format(i+1))
-        action.move_to_element(ele).perform()
-        time.sleep(2)
-
-        # save screenshot
-        filename = "images/shot_{}_{}.png".format(
-            '_'.join(commune_name.split()),
-            '_'.join(str(nb_lgt_dispo.split('\n')[0]).split()))
-        LOGGER.info("Shot filename: %s", filename)
-        driver.get_screenshot_as_file(filename)
-        time.sleep(2)
-        LOGGER.info("end Program \n")
+    for page in range(pages):
+        programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
+        for i, a_program in enumerate(programs):
+            fetch_main_data(driver, a_program, i+1, page+1)
+        LOGGER.info("Fin des programmes de la page :%d\n", page+1)
         # pdb.set_trace()
+        if page != pages-1: 
+            LOGGER.info("Go to next page")
+            driver.find_element_by_class_name('next').click()
+            time.sleep(2)
 
-    # next_button = driver.find_element_by_class_name('next')
-    # prev_button = driver.find_element_by_class_name('prev')
+
+def get_text(driver, locator):
+    """Return text if available."""
+    try:
+        return driver.find_element_by_class_name(locator).text
+    except:
+        return "No value"
+
+
+def number_of_page(all, per_page):
+    """Return number of page."""
+    num = all // per_page
+    mod = all % per_page
+    if mod != 0:
+        return num + 1
+    return num
+
+
+def fetch_main_data(driver, program, i, page):
+    """Fetch main program data."""
+    residence_name = get_text(program, r'font-regular')
+    LOGGER.info("\n")
+    LOGGER.info("Début du programme")
+    LOGGER.info("Résidence : %s", residence_name)
+
+    commune_name = get_text(program, r'font-bold')
+    LOGGER.info("Commune : %s", commune_name)
+
+    nb_lgt_dispo = get_text(program, r'highlight-keys')
+    long_nb_lgt_dispo = ' '.join(nb_lgt_dispo.split('\n'))
+    LOGGER.info("Nb logement dispo : %s", long_nb_lgt_dispo)
+
+    # move element to program to capture
+    xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
+    action = ActionChains(driver)
+    ele = program.find_element_by_xpath(xpath_tmpl.format(i))
+    LOGGER.info("Program xpath: %s", xpath_tmpl.format(i))
+    action.move_to_element(ele).perform()
+    time.sleep(2)
+
+    # save screenshot
+    filename = os.path.normpath(os.path.join(IMG_TEMP,
+        "{page}_{rang}_{name}_{city}_{size}.png".format(
+            **{'page': page,
+               'rang': str(i).zfill(2),
+               'name': '_'.join(residence_name.split()),
+               'city': '_'.join(commune_name.split()),
+               'size': '_'.join(str(nb_lgt_dispo.split('\n')[0]).split())})))
+    LOGGER.info("Chemin full: %s", filename)
+    LOGGER.info("Chemin : %s", os.path.basename(filename))
+    driver.get_screenshot_as_file(filename)
+    time.sleep(2)
+    LOGGER.info("Fin du programme \n")
+
 
 def main():
     """Process the capture of pictures."""
     try:
         LOGGER.info("\n")
         LOGGER.info("Lancement du programme")
-        # launch grabbing
-        grab()
+    
+        nb_retries = 3  # number of attempts allowed after any failures
+        while nb_retries > 0:
+            LOGGER.info("Nb retries allowed: %d", nb_retries)
+
+            # launch grabbing
+            state = grab()
+
+            # condition to break while loop
+            if state:
+                break
+
+            nb_retries -= 1
 
     except FileNotFoundError as err:
         LOGGER.error("Un problème est survenu : %s", err)
