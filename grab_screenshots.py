@@ -316,12 +316,24 @@ def fetch_main_data(driver, program, i, page):
     LOGGER.info("Fin du programme \n")
 
 
+def clear_files(folder):
+    """Clear files."""
+	for ele in os.listdir(folder):
+		try:
+			os.remove(os.path.normpath(os.path.join(folder, ele)))
+		except FileNotFoundError:
+			pass
+
+
 def main():
     """Process the capture of pictures."""
     try:
         LOGGER.info("\n")
         LOGGER.info("Lancement du programme")
-    
+
+        # initialise folder
+        clear_files(IMG_TEMP)
+
         nb_retries = 3  # number of attempts allowed after any failures
         while nb_retries > 0:
             LOGGER.info("Nb retries allowed: %d", nb_retries)
@@ -337,13 +349,6 @@ def main():
 
     except FileNotFoundError as err:
         LOGGER.error("Un problème est survenu : %s", err)
-
-    except AssertionError as ae:
-        LOGGER.error("Il n'y a aucune donnée à traiter : %s", ae)
-
-    except KeyboardInterrupt:
-        print("\n> Processus arrêté par l'utilisateur\n")
-        LOGGER.error("Processus arrêté par l'utilisateur")
 
     finally:
         print("\n> Fin du processus")
