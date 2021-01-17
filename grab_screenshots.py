@@ -76,8 +76,16 @@ def grab():
         select_by_region(driver, IDF_REGION)
 
         # collect data
-        get_program_data(driver)
-        state = True
+        programs_element = driver.find_element_by_id('results-prog')
+        number_programs = int(programs_element.get_attribute('data-count'))
+        get_program_data(driver, number_programs)
+        num = os.listdir(IMG_TEMP)  # nombre des photos sauvegardées
+        if num == number_programs:
+            LOGGER.info("Toutes les photos des programmes sont sauvegardées")
+            state = True
+        else:
+            LOGGER.info("%d photos sur %d sauvegardées", num, number_programs)
+            state = False
 
     except Exception as ex:
         LOGGER.error("Un problème est survenu : %s", ex)
@@ -226,23 +234,32 @@ def select_by_region(driver, region):
     time.sleep(3)
 
 
-def get_program_data(driver):
+def get_program_data(driver, all_programs):
     """ Get program data."""
-    all_programs = int(driver.find_element_by_id('results-prog').get_attribute('data-count'))
     LOGGER.info("Quantité des programmes immobiliers : %d", all_programs)
     pages = number_of_page(all_programs, PROGRAMS_PER_PAGE)
 
-    # pdb.set_trace()
+    # collect programs within a page
     for page in range(pages):
         programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
         for i, a_program in enumerate(programs):
             fetch_main_data(driver, a_program, i+1, page+1)
-        LOGGER.info("Fin des programmes de la page :%d\n", page+1)
-        # pdb.set_trace()
-        if page != pages-1: 
+        LOGGER.info("Fin des programmes de la page : %d\n", page+1)
+
+        # avoid to click next button on the last page
+        if page != pages-1:
             LOGGER.info("Go to next page")
             driver.find_element_by_class_name('next').click()
-            time.sleep(2)
+            wait_next_page(driver, page+1)
+
+
+def wait_next_page(driver, page, t=1):
+    """Wait while next page is loading."""
+    next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
+    while True:
+        if driver.current_url == next_url.format(page):
+            break
+        time.sleep(int(t))
 
 
 def get_text(driver, locator):
