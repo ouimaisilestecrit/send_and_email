@@ -19,13 +19,8 @@ MAILBOX_PORT = 587
 
 # image's path
 DIRNAME = os.path.dirname(__file__)
-IMG_FOLDER = os.path.normpath(os.path.join(DIRNAME, 'images'))
-IMG_LIST = os.listdir(IMG_FOLDER)
-
-# set timecode on email's subject
-locale.setlocale(locale.LC_TIME, "fr_FR")
-SUBJECT = "{} : des nouvelles de ventes sur Altarea Partenaires !".format(
-    datetime.today().strftime('%A %d %b %y, %Hh%M').capitalize())
+IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'images/mail'))
+IMG_LIST = os.listdir(IMG_MAIL)
 
 
 def get_users(filename):
@@ -58,17 +53,30 @@ def main():
     """Send email with attachments."""
     # read contacts
     names, emails = get_users('users.txt')
-    msg_template = read_template('template.txt')  # message content template
+
+	# set timecode on email's subject
+	locale.setlocale(locale.LC_TIME, "fr_FR")
+	subject = "{at} : {pic} ventes d'Altarea Partenaires !".format(
+		**{
+			'at': datetime.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
+			'pic': "des nouvelles de" if IMG_LIST else "aucune nouveauté sur les"
+		})
 
     # for each contact, send the email:
     for name, email in zip(names, emails):
-
-        # add in the actual person name to the message template
-        message = msg_template.substitute(PERSON_NAME=name.title())
+        # add in the actual person name to a message template
+        if IMG_LIST:
+            # message content template
+            msg_template = read_template('template.txt')
+            message = msg_template.substitute(PERSON_NAME=name.title())
+        else:
+            # message template for no picture
+            msg_template = read_template('template_no_picture.txt')
+            message = msg_template.substitute(PERSON_NAME=name.title())
 
         # Create the container email message.
         msg = EmailMessage()
-        msg['Subject'] = SUBJECT
+        msg['Subject'] = subject
         msg['From'] = MAIL_LOGIN
         msg['To'] = email
         msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
@@ -78,12 +86,13 @@ def main():
 
         # Open the files in binary mode.  Use imghdr to figure out the
         # MIME subtype for each specific image.
-        for file_ in IMG_LIST:
-            file_ = os.path.normpath(os.path.join(IMG_FOLDER, file_))
-            with open(file_, 'rb') as fp:
-                img_data = fp.read()
-            msg.add_attachment(img_data, maintype='image',
-                               subtype=imghdr.what(None, img_data))
+        if IMG_LIST:
+            for file_ in IMG_LIST:
+                file_ = os.path.normpath(os.path.join(IMG_MAIL, file_))
+                with open(file_, 'rb') as fp:
+                    img_data = fp.read()
+                msg.add_attachment(img_data, maintype='image',
+                                   subtype=imghdr.what(None, img_data))
 
         # Send the email via our own SMTP server.
         # Terminate the SMTP session and close the connection
