@@ -1,0 +1,10 @@
+Salut ${PERSON_NAME},
+
+Le site est soit momentanément indisponible (https://altarea-partenaires.com/accueil/) ou vos identifiants n'ont pas pu être autorisés pour accéder au contenu du site.
+Il est donc impossible à cet instant de te tenir informé sur les ventes d'Altarea Partenaires pour le moment.
+
+Bien à toi,
+
+Cet e-mail vous a été envoyé automatiquement, merci de ne pas y répondre.
+
+Ce message et toutes les pièces jointes sont établis à l'attention exclusive de ses destinataires. Si vous recevez ce message par erreur, merci de le détruire et d'en avertir immédiatement l'expéditeur par e-mail. Toute utilisation de ce message non conforme à sa destination, toute diffusion ou toute publication, totale ou partielle, est interdite, sauf autorisation expresse. Les communications sur Internet n'étant pas sécurisées, l'expéditeur informe qu'il ne peut accepter aucune responsabilité quant au contenu de ce message.
