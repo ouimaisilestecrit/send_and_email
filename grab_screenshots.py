@@ -1,9 +1,18 @@
 """Grab pictures."""
 
+import imghdr
+import locale
 import logging
 import os
+import smtplib
 import sys
 import time
+
+
+from collections import OrderedDict
+from datetime import datetime as dt
+from email.message import EmailMessage
+from string import Template
 
 import pdb
 
@@ -23,12 +32,35 @@ DIRNAME = os.path.dirname(__file__)
 IMG_BASE = os.path.normpath(os.path.join(DIRNAME, 'images/base'))
 IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'images/mail'))
 IMG_TEMP = os.path.normpath(os.path.join(DIRNAME, 'images/temp'))
+IMG_MAIL_LIST = os.listdir(IMG_MAIL)
+IMG_TEMP_LIST = os.listdir(IMG_TEMP)
 
+# email credentials
+MAIL_LOGIN = os.environ['EDN_LOGIN']
+MAIL_PASSW = os.environ['EDN_PASSWORD']
+
+# email gateway parameters
+MAILBOX_HOST = 'smtp.office365.com'
+MAILBOX_PORT = 587
+
+# website credentials
 LOGIN = os.environ["ALTAREA_LOGIN"]
 PASSWORD = os.environ["ALTAREA_PASSWORD"]
+
+# constants
 ALTAREA_URL = "https://altarea-partenaires.com"
 IDF_REGION = "Ile-de-France"
 PROGRAMS_PER_PAGE = 12
+ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
+ERR_MSG = r"Une erreur critique est survenue sur votre site"
+HOME_URL = r"https://altarea-partenaires.com/accueil/"
+
+# template dictionary
+TEMPLATE_DICT = OrderedDict([
+    (0, ['template.txt', "des nouvelles de ventes d'Altarea Partenaires !"]),
+    (1, ['template_no_picture.txt', "aucune nouveauté sur les ventes d'Altarea Partenaires !"]),
+    (2, ['template_not_available.txt', "Alerte ! Problème de connexion sur Altarea Partenaires !"])
+])
 
 # WEBDRIVER
 EXECUTABLE_PATH = "C:\Program Files (x86)\chromedriver.exe"
@@ -49,16 +81,90 @@ logging.basicConfig(
 LOGGER = logging.getLogger()
 
 
+def get_users(filename):
+    """Read contacts.
+
+    Function to read the contacts from a given contact file
+    and return a list of names and email adresses.
+    """
+    names = []
+    emails = []
+    with open(filename, 'r', encoding='utf-8') as contacts_file:
+        for a_contact in contacts_file:
+            names.append(a_contact.split()[0])
+            emails.append(a_contact.split()[1])
+    return names, emails
+
+
+def read_template(filename):
+    """Read template.
+
+    Function to read the template from a given template file
+    and return it.
+    """
+    with open(filename, 'r', encoding='utf-8') as template_file:
+        template_file_content = template_file.read()
+    return Template(template_file_content)
+
+
+def send_mail(filename, sub, folder=IMG_MAIL_LIST):
+    """Send email with attachments."""
+    # read contacts
+    names, emails = get_users('users.txt')
+
+    # set timecode on email's subject
+    locale.setlocale(locale.LC_TIME, "fr_FR")
+    subject = "{at} : {sub}".format(
+        **{'at': dt.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
+           'sub': sub})
+
+    # for each contact, send the email:
+    for name, email in zip(names, emails):
+        # add in the actual person name to a message template
+        msg_template = read_template(filename)
+        message = msg_template.substitute(PERSON_NAME=name.title())
+
+        # Create the container email message.
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = MAIL_LOGIN
+        msg['To'] = email
+        msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
+
+        # add in the message body
+        msg.set_content(message)
+
+        # Open the files in binary mode.  Use imghdr to figure out the
+        # MIME subtype for each specific image.
+        if folder:
+            for file_ in folder:
+                file_ = os.path.normpath(os.path.join(IMG_MAIL, file_))
+                with open(file_, 'rb') as fp:
+                    img_data = fp.read()
+                msg.add_attachment(img_data, maintype='image',
+                                   subtype=imghdr.what(None, img_data))
+
+        # Send the email via our own SMTP server.
+        # Terminate the SMTP session and close the connection
+        with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
+            # enable security
+            s.starttls()
+            # login with email credential
+            s.login(MAIL_LOGIN, MAIL_PASSW)
+            s.send_message(msg)
+
+        del msg
+
+
 def grab():
     """Grab screenshots."""
     state = False
+    # set up the driver
+    driver = chrome_driver(EXECUTABLE_PATH)
     try:
-        # set up the driver
-        driver = chrome_driver(EXECUTABLE_PATH)
-
         # go to website of concern
         driver.get(ALTAREA_URL)
-        time.sleep(5)
+        time.sleep(10)
         LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
 
         # open your session
@@ -79,7 +185,7 @@ def grab():
         programs_element = driver.find_element_by_id('results-prog')
         number_programs = int(programs_element.get_attribute('data-count'))
         get_program_data(driver, number_programs)
-        num = os.listdir(IMG_TEMP)  # nombre des photos sauvegardées
+        num = len(os.listdir(IMG_TEMP))  # nombre des photos sauvegardées
         if num == number_programs:
             LOGGER.info("Toutes les photos des programmes sont sauvegardées")
             state = True
@@ -145,17 +251,18 @@ def chrome_driver(executable_path, t=10):
     return driver
 
 
-def connect(driver):
+def connect(driver, t=1):
     """Connect to a session."""
     try:
-        login_modal = get_by_xpath(driver,
-            r"/html/body/header/div/div/div[2]/div/button")
+        # pdb.set_trace()
+        login_modal = get_by_xpath(driver, r"/html/body/header/div/div/div[2]/div/button")
         if login_modal.get_attribute("data-target") == "#login-modal":
             login_modal.click()
             LOGGER.info("Lancement de l'authentification")
 
-            if not sign_in(driver):
+            if not sign_in(driver, t):
                 return False
+
     except Exception as ex:
         LOGGER.error("Un problème est survenu : %s", ex)
         return False
@@ -163,15 +270,19 @@ def connect(driver):
         return True
 
 
-def sign_in(driver):
+def sign_in(driver, t=1):
     """Fill in the login fields with your credentials."""
     try:
+        LOGGER.info("time sleep: %d", t)
         LOGGER.info("Saisie de l'identifiant")
+        time.sleep(int(t))
         get_by_id(driver, 'login-email').send_keys(LOGIN)
         LOGGER.info("Saisie du mot de passe")
+        time.sleep(int(t))
         get_by_id(driver, 'login-password').send_keys(PASSWORD)
-        get_by_xpath(driver,
-            r"//*[@id='dashboardContent']/form/div[2]/div/button").click()
+        time.sleep(int(t))
+        get_by_xpath(driver, r"//*[@id='dashboardContent']/form/div[2]/div/button").click()
+
         if not wait_signing_in(driver):
             return False
     except:
@@ -184,12 +295,9 @@ def wait_signing_in(driver):
     """Wait while signing in."""
     try:
         i = 0
-        LOG_MSG = r"https://altarea-partenaires.com/wp-login.php"
-        ERR_MSG = r"Une erreur critique est survenue sur votre site"
-        HOME_URL = r"https://altarea-partenaires.com/accueil/"
         LOGGER.info("En attente de chargement de la page...")
         while True:
-            if driver.current_url == LOG_MSG:
+            if driver.current_url == ERR_URL:
                 LOGGER.warning("%s", ERR_MSG)
                 return False
             if driver.current_url == HOME_URL:
@@ -238,6 +346,7 @@ def get_program_data(driver, all_programs):
     """ Get program data."""
     LOGGER.info("Quantité des programmes immobiliers : %d", all_programs)
     pages = number_of_page(all_programs, PROGRAMS_PER_PAGE)
+    LOGGER.info("Number of page : %d", pages)
 
     # collect programs within a page
     for page in range(pages):
@@ -250,12 +359,13 @@ def get_program_data(driver, all_programs):
         if page != pages-1:
             LOGGER.info("Go to next page")
             driver.find_element_by_class_name('next').click()
-            wait_next_page(driver, page+1)
+            wait_next_page(driver, page+2)
 
 
 def wait_next_page(driver, page, t=1):
     """Wait while next page is loading."""
     next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
+    LOGGER.info("next_url.format(page): %s", next_url.format(page))
     while True:
         if driver.current_url == next_url.format(page):
             break
@@ -281,9 +391,8 @@ def number_of_page(all, per_page):
 
 def fetch_main_data(driver, program, i, page):
     """Fetch main program data."""
+    LOGGER.info("Début du programme\n")
     residence_name = get_text(program, r'font-regular')
-    LOGGER.info("\n")
-    LOGGER.info("Début du programme")
     LOGGER.info("Résidence : %s", residence_name)
 
     commune_name = get_text(program, r'font-bold')
@@ -297,7 +406,6 @@ def fetch_main_data(driver, program, i, page):
     xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
     action = ActionChains(driver)
     ele = program.find_element_by_xpath(xpath_tmpl.format(i))
-    LOGGER.info("Program xpath: %s", xpath_tmpl.format(i))
     action.move_to_element(ele).perform()
     time.sleep(2)
 
@@ -309,30 +417,56 @@ def fetch_main_data(driver, program, i, page):
                'name': '_'.join(residence_name.split()),
                'city': '_'.join(commune_name.split()),
                'size': '_'.join(str(nb_lgt_dispo.split('\n')[0]).split())})))
-    LOGGER.info("Chemin full: %s", filename)
     LOGGER.info("Chemin : %s", os.path.basename(filename))
     driver.get_screenshot_as_file(filename)
     time.sleep(2)
     LOGGER.info("Fin du programme \n")
 
 
-def clear_files(folder):
+def clear_files(*folders):
     """Clear files."""
-	for ele in os.listdir(folder):
-		try:
-			os.remove(os.path.normpath(os.path.join(folder, ele)))
-		except FileNotFoundError:
-			pass
+    for folder in folders:
+        for ele in os.listdir(folder):
+            try:
+                os.remove(os.path.normpath(os.path.join(folder, ele)))
+            except FileNotFoundError:
+                pass
+
+
+def send_direct_email():
+    """Send an email if site not available."""
+    # set up the driver
+    driver = chrome_driver(EXECUTABLE_PATH)
+    try:
+        # go to website of concern
+        driver.get(ALTAREA_URL)
+        time.sleep(10)
+        LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
+
+        # open your session
+        if not connect(driver, 3):         
+            if driver.current_url == ERR_URL and len(os.listdir(IMG_TEMP)) == 0:
+                send_mail(*TEMPLATE_DICT[2], IMG_TEMP_LIST)
+                return True
+        # if acces to website then relaunch grab function
+        grab()
+
+    except Exception as ex:
+        LOGGER.error("Un problème est survenu : %s", ex)
+        return None
+
+    finally:
+        driver.quit()
 
 
 def main():
     """Process the capture of pictures."""
     try:
-        LOGGER.info("\n")
-        LOGGER.info("Lancement du programme")
+        LOGGER.info("Lancement du processus\n")
 
         # initialise folder
-        clear_files(IMG_TEMP)
+        LOGGER.info("Nettoyage des répertoires")
+        clear_files(IMG_TEMP, IMG_MAIL)
 
         nb_retries = 3  # number of attempts allowed after any failures
         while nb_retries > 0:
@@ -346,6 +480,10 @@ def main():
                 break
 
             nb_retries -= 1
+
+        else:
+            if send_direct_email():
+                LOGGER.info('Notification envoyée')
 
     except FileNotFoundError as err:
         LOGGER.error("Un problème est survenu : %s", err)
