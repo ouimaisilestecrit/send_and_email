@@ -4,10 +4,10 @@ import imghdr
 import locale
 import logging
 import os
+import pickle
 import smtplib
 import sys
 import time
-
 
 from collections import OrderedDict
 from datetime import datetime as dt
@@ -25,6 +25,8 @@ try:
     from selenium.webdriver.remote.webelement import WebElement
     from selenium.webdriver.support import expected_conditions as EC
 
+    from shutil import move, Error
+    
 except ModuleNotFoundError as e:
     print("Some Modules are missing: {}".format(e))
 
@@ -32,6 +34,7 @@ DIRNAME = os.path.dirname(__file__)
 IMG_BASE = os.path.normpath(os.path.join(DIRNAME, 'images/base'))
 IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'images/mail'))
 IMG_TEMP = os.path.normpath(os.path.join(DIRNAME, 'images/temp'))
+IMG_BASE_LIST = os.listdir(IMG_BASE)
 IMG_MAIL_LIST = os.listdir(IMG_MAIL)
 IMG_TEMP_LIST = os.listdir(IMG_TEMP)
 
@@ -55,12 +58,17 @@ ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
 ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 
-# template dictionary
+# template dictionary of file's message and subjects
 TEMPLATE_DICT = OrderedDict([
-    (0, ['template.txt', "des nouvelles de ventes d'Altarea Partenaires !"]),
-    (1, ['template_no_picture.txt', "aucune nouveauté sur les ventes d'Altarea Partenaires !"]),
-    (2, ['template_not_available.txt', "Alerte ! Problème de connexion sur Altarea Partenaires !"])
-])
+    (0,
+        ['template.txt',
+         "des nouvelles de ventes d'Altarea Partenaires !"]),
+    (1,
+        ['template_no_picture.txt',
+         "aucune nouveauté sur les ventes d'Altarea Partenaires !"]),
+    (2,
+        ['template_not_available.txt',
+         "Alerte ! Problème de connexion sur Altarea Partenaires !"])])
 
 # WEBDRIVER
 EXECUTABLE_PATH = "C:\Program Files (x86)\chromedriver.exe"
@@ -78,7 +86,7 @@ logging.basicConfig(
         level = logging.INFO,
         format= LOG_FORMAT)
 
-LOGGER = logging.getLogger()
+logger = logging.getLogger()
 
 
 def get_users(filename):
@@ -120,7 +128,7 @@ def send_mail(filename, sub, folder=IMG_MAIL_LIST):
 
     # for each contact, send the email:
     for name, email in zip(names, emails):
-        # add in the actual person name to a message template
+        # add in the actual person name to template
         msg_template = read_template(filename)
         message = msg_template.substitute(PERSON_NAME=name.title())
 
@@ -134,7 +142,8 @@ def send_mail(filename, sub, folder=IMG_MAIL_LIST):
         # add in the message body
         msg.set_content(message)
 
-        # Open the files in binary mode.  Use imghdr to figure out the
+        # Open the files in binary mode.
+        # Use imghdr to figure out the
         # MIME subtype for each specific image.
         if folder:
             for file_ in folder:
@@ -165,11 +174,11 @@ def grab():
         # go to website of concern
         driver.get(ALTAREA_URL)
         time.sleep(10)
-        LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
+        logger.info("Chargement de la page d'accueil : %s", driver.title)
 
         # open your session
         if not connect(driver):
-            LOGGER.warning("Plusieurs causes peuvent être à l'origine de l'interruption de ce processus")
+            logger.warning("Plusieurs causes peuvent être à l'origine de l'interruption de ce processus")
             state = False
             return None
 
@@ -178,7 +187,7 @@ def grab():
         handle_modal(driver, locator)
         
         # search by region of concern
-        LOGGER.info("Lancement de la recherche par critères")
+        logger.info("Lancement de la recherche par critères")
         select_by_region(driver, IDF_REGION)
 
         # collect data
@@ -187,14 +196,14 @@ def grab():
         get_program_data(driver, number_programs)
         num = len(os.listdir(IMG_TEMP))  # nombre des photos sauvegardées
         if num == number_programs:
-            LOGGER.info("Toutes les photos des programmes sont sauvegardées")
+            logger.info("Toutes les photos des programmes sont sauvegardées")
             state = True
         else:
-            LOGGER.info("%d photos sur %d sauvegardées", num, number_programs)
+            logger.info("%d photos sur %d sauvegardées", num, number_programs)
             state = False
 
     except Exception as ex:
-        LOGGER.error("Un problème est survenu : %s", ex)
+        logger.error("Un problème est survenu : %s", ex)
         state = False
         return None
 
@@ -213,7 +222,7 @@ def get_by_id(driver, locator):
             return None
         return element
     except:
-        LOGGER.error("An error occurred when selecting from: %s", locator)
+        logger.error("An error occurred when selecting from: %s", locator)
         return None
 
 
@@ -226,7 +235,7 @@ def get_by_xpath(driver, locator):
             return None
         return element
     except:
-        LOGGER.error("An error occurred when selecting from: %s", locator)
+        logger.error("An error occurred when selecting from: %s", locator)
         return None
 
 
@@ -239,7 +248,7 @@ def get_by_tag_name(driver, locator):
             return None
         return element
     except:
-        LOGGER.error("An error occurred when selecting from: %s", locator)
+        logger.error("An error occurred when selecting from: %s", locator)
         return None
 
 
@@ -254,17 +263,16 @@ def chrome_driver(executable_path, t=10):
 def connect(driver, t=1):
     """Connect to a session."""
     try:
-        # pdb.set_trace()
         login_modal = get_by_xpath(driver, r"/html/body/header/div/div/div[2]/div/button")
         if login_modal.get_attribute("data-target") == "#login-modal":
             login_modal.click()
-            LOGGER.info("Lancement de l'authentification")
+            logger.info("Lancement de l'authentification")
 
             if not sign_in(driver, t):
                 return False
 
     except Exception as ex:
-        LOGGER.error("Un problème est survenu : %s", ex)
+        logger.error("Un problème est survenu : %s", ex)
         return False
     else:
         return True
@@ -273,11 +281,11 @@ def connect(driver, t=1):
 def sign_in(driver, t=1):
     """Fill in the login fields with your credentials."""
     try:
-        LOGGER.info("time sleep: %d", t)
-        LOGGER.info("Saisie de l'identifiant")
+        logger.info("time sleep: %d", t)
+        logger.info("Saisie de l'identifiant")
         time.sleep(int(t))
         get_by_id(driver, 'login-email').send_keys(LOGIN)
-        LOGGER.info("Saisie du mot de passe")
+        logger.info("Saisie du mot de passe")
         time.sleep(int(t))
         get_by_id(driver, 'login-password').send_keys(PASSWORD)
         time.sleep(int(t))
@@ -295,16 +303,16 @@ def wait_signing_in(driver):
     """Wait while signing in."""
     try:
         i = 0
-        LOGGER.info("En attente de chargement de la page...")
+        logger.info("En attente de chargement de la page...")
         while True:
             if driver.current_url == ERR_URL:
-                LOGGER.warning("%s", ERR_MSG)
+                logger.warning("%s", ERR_MSG)
                 return False
             if driver.current_url == HOME_URL:
-                LOGGER.info("Connexion réussie")
+                logger.info("Connexion réussie")
                 break
             if i == 30:
-                LOGGER.info("Échec de la connexion")
+                logger.info("Échec de la connexion")
                 return False
             time.sleep(1)
             i += 1
@@ -320,15 +328,15 @@ def handle_modal(driver, locator):
         first_modal = driver.find_element_by_xpath(locator)
         first_modal.is_displayed()
     except:
-        LOGGER.warning("Il n'y a pas de fenêtre publicitaire")
+        logger.warning("Il n'y a pas de fenêtre publicitaire")
     else:
-        LOGGER.info("Fermeture de la fenêtre publicitaire")
+        logger.info("Fermeture de la fenêtre publicitaire")
         first_modal.click()
 
 
 def select_by_region(driver, region):
     """Select a region."""
-    LOGGER.info("Chargement des informations pour la région Ile-de-France")
+    logger.info("Chargement des informations pour la région Ile-de-France")
     dept_combo_box = driver.find_element_by_xpath(
         "//*[@id='select2-departements-container']")
     submit_by_program = driver.find_element_by_xpath(
@@ -344,20 +352,20 @@ def select_by_region(driver, region):
 
 def get_program_data(driver, all_programs):
     """ Get program data."""
-    LOGGER.info("Quantité des programmes immobiliers : %d", all_programs)
+    logger.info("Quantité des programmes immobiliers : %d", all_programs)
     pages = number_of_page(all_programs, PROGRAMS_PER_PAGE)
-    LOGGER.info("Number of page : %d", pages)
+    logger.info("Number of page : %d", pages)
 
     # collect programs within a page
     for page in range(pages):
         programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
         for i, a_program in enumerate(programs):
             fetch_main_data(driver, a_program, i+1, page+1)
-        LOGGER.info("Fin des programmes de la page : %d\n", page+1)
+        logger.info("Fin des programmes de la page : %d\n", page+1)
 
         # avoid to click next button on the last page
         if page != pages-1:
-            LOGGER.info("Go to next page")
+            logger.info("Go to next page")
             driver.find_element_by_class_name('next').click()
             wait_next_page(driver, page+2)
 
@@ -365,7 +373,7 @@ def get_program_data(driver, all_programs):
 def wait_next_page(driver, page, t=1):
     """Wait while next page is loading."""
     next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
-    LOGGER.info("next_url.format(page): %s", next_url.format(page))
+    logger.info("next_url.format(page): %s", next_url.format(page))
     while True:
         if driver.current_url == next_url.format(page):
             break
@@ -391,16 +399,16 @@ def number_of_page(all, per_page):
 
 def fetch_main_data(driver, program, i, page):
     """Fetch main program data."""
-    LOGGER.info("Début du programme\n")
+    logger.info("Début du programme\n")
     residence_name = get_text(program, r'font-regular')
-    LOGGER.info("Résidence : %s", residence_name)
+    logger.info("Résidence : %s", residence_name)
 
     commune_name = get_text(program, r'font-bold')
-    LOGGER.info("Commune : %s", commune_name)
+    logger.info("Commune : %s", commune_name)
 
     nb_lgt_dispo = get_text(program, r'highlight-keys')
     long_nb_lgt_dispo = ' '.join(nb_lgt_dispo.split('\n'))
-    LOGGER.info("Nb logement dispo : %s", long_nb_lgt_dispo)
+    logger.info("Nb logement dispo : %s", long_nb_lgt_dispo)
 
     # move element to program to capture
     xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
@@ -417,10 +425,10 @@ def fetch_main_data(driver, program, i, page):
                'name': '_'.join(residence_name.split()),
                'city': '_'.join(commune_name.split()),
                'size': '_'.join(str(nb_lgt_dispo.split('\n')[0]).split())})))
-    LOGGER.info("Chemin : %s", os.path.basename(filename))
+    logger.info("Chemin : %s", os.path.basename(filename))
     driver.get_screenshot_as_file(filename)
     time.sleep(2)
-    LOGGER.info("Fin du programme \n")
+    logger.info("Fin du programme \n")
 
 
 def clear_files(*folders):
@@ -441,7 +449,7 @@ def send_direct_email():
         # go to website of concern
         driver.get(ALTAREA_URL)
         time.sleep(10)
-        LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
+        logger.info("Chargement de la page d'accueil : %s", driver.title)
 
         # open your session
         if not connect(driver, 3):         
@@ -452,25 +460,37 @@ def send_direct_email():
         grab()
 
     except Exception as ex:
-        LOGGER.error("Un problème est survenu : %s", ex)
+        logger.error("Un problème est survenu : %s", ex)
         return None
 
     finally:
         driver.quit()
 
 
+def move_file(filename, dir=IMG_TEMP, dst_path=IMG_MAIL):
+    """Move the file to a directory."""
+    try:
+        src_path = str(os.path.normpath(
+                       os.path.join(dir, os.path.basename(filename))))
+        move(src_path, dst_path)
+    except FileNotFoundError as fnfe:
+        logger.error("%s", fnfe)
+    except Error as err:
+        logger.error("%s", err)
+
+
 def main():
     """Process the capture of pictures."""
     try:
-        LOGGER.info("Lancement du processus\n")
+        logger.info("Lancement du processus\n")
 
         # initialise folder
-        LOGGER.info("Nettoyage des répertoires")
+        logger.info("Nettoyage des répertoires")
         clear_files(IMG_TEMP, IMG_MAIL)
 
         nb_retries = 3  # number of attempts allowed after any failures
         while nb_retries > 0:
-            LOGGER.info("Nb retries allowed: %d", nb_retries)
+            logger.info("Nb retries allowed: %d", nb_retries)
 
             # launch grabbing
             state = grab()
@@ -483,14 +503,14 @@ def main():
 
         else:
             if send_direct_email():
-                LOGGER.info('Notification envoyée')
+                logger.info('Notification envoyée')
 
     except FileNotFoundError as err:
-        LOGGER.error("Un problème est survenu : %s", err)
+        logger.error("Un problème est survenu : %s", err)
 
     finally:
         print("\n> Fin du processus")
-        LOGGER.info("Fin du processus")
+        logger.info("Fin du processus")
 
 
 if __name__ == '__main__':
