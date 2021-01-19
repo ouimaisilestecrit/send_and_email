@@ -54,13 +54,13 @@ def main():
     # read contacts
     names, emails = get_users('users.txt')
 
-	# set timecode on email's subject
-	locale.setlocale(locale.LC_TIME, "fr_FR")
-	subject = "{at} : {pic} ventes d'Altarea Partenaires !".format(
-		**{
-			'at': datetime.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
-			'pic': "des nouvelles de" if IMG_LIST else "aucune nouveauté sur les"
-		})
+    # set timecode on email's subject
+    locale.setlocale(locale.LC_TIME, "fr_FR")
+    subject = "{at} : {pic} ventes d'Altarea Partenaires !".format(
+        **{
+            'at': datetime.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
+            'pic': "des nouvelles de" if IMG_LIST else "aucune nouveauté sur les"
+        })
 
     # for each contact, send the email:
     for name, email in zip(names, emails):
