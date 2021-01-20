@@ -1,6 +1,6 @@
 Salut ${PERSON_NAME},
 
-Tu trouveras ci-joints les dernières mises à jour d'Altarea Partenaires !
+Tu trouveras ci-joint(s) les dernières mises à jour d'Altarea Partenaires ! : https://altarea-partenaires.com/accueil/
 
 L'heure indiquée, dans l'objet de ce mail, n'indique que le moment d'envoi du mail et non pas celui de la capture.
 
