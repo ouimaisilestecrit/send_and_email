@@ -19,9 +19,13 @@ MAILBOX_PORT = 587
 
 # image's path
 DIRNAME = os.path.dirname(__file__)
-IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'images/mail'))
+TEMPL_PATH = os.path.normpath(os.path.join(DIRNAME, 'resources/templates'))
+IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'resources/images/mail'))
 IMG_LIST = os.listdir(IMG_MAIL)
 
+USR_FILENAME = 'users.txt'
+TEMPLATE_FILENAME = 'template.txt'
+TEMPLATE_NO_PICTURE_FILENAME = 'template_no_picture.txt'
 
 def get_users(filename):
     """Read contacts.
@@ -52,7 +56,8 @@ def read_template(filename):
 def main():
     """Send email with attachments."""
     # read contacts
-    names, emails = get_users('users.txt')
+    names, emails = get_users(
+        os.path.normpath(os.path.join(TEMPL_PATH, USR_FILENAME)))
 
     # set timecode on email's subject
     locale.setlocale(locale.LC_TIME, "fr_FR")
@@ -67,11 +72,13 @@ def main():
         # add in the actual person name to a message template
         if IMG_LIST:
             # message content template
-            msg_template = read_template('template.txt')
+            msg_template = read_template(
+                os.path.normpath(os.path.join(TEMPL_PATH, TEMPLATE_FILENAME)))
             message = msg_template.substitute(PERSON_NAME=name.title())
         else:
             # message template for no picture
-            msg_template = read_template('template_no_picture.txt')
+            msg_template = read_template(
+                os.path.normpath(os.path.join(TEMPL_PATH, TEMPLATE_NO_PICTURE_FILENAME)))
             message = msg_template.substitute(PERSON_NAME=name.title())
 
         # Create the container email message.
