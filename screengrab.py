@@ -63,9 +63,9 @@ TEMPLATE_DICT = OrderedDict([
      [os.path.normpath(os.path.join(TEMPLATES, 'template.txt')),
       [
           "ça baisse mais ça va remonter, venez consulter l'état de l'offre qui a bougé dans la corbeille d'Altarea Partenaires !",
-          "venez découvrir ce qui a changé dans les « deux » programmes parmi les offres d'Altarea Partenaires !",
-          "ça galope du côté d'Altarea Partenaires, venez découvrir les « {} » mouvements parmi les offres !",
-          "ça va déménager ! Venez découvrir les « {} » mouvements parmi les offres d'Altarea Partenaires !"]]),
+          "venez découvrir ce qui a changé dans les deux programmes parmi les offres d'Altarea Partenaires !",
+          "ça galope du côté d'Altarea Partenaires, venez découvrir les {} mouvements parmi les offres !",
+          "ça va déménager ! Venez découvrir les {} mouvements parmi les offres d'Altarea Partenaires !"]]),
     (1,
      [os.path.normpath(os.path.join(TEMPLATES, 'template_no_picture.txt')),
       r"pour le moment rien n'a bougé du côté des offres d'Altarea Partenaires !"]),
@@ -88,12 +88,11 @@ logging.basicConfig(
     filename=LOG_FILE,
     level=logging.INFO,
     format=LOG_FORMAT)
-
 logger = logging.getLogger()
 
 
 def sub_format(size, sub):
-    """Return the appropiate message."""
+    """Return the appropiate subject's message."""
     if size == 1:
         return sub[0].format(size)
     if size == 2:
