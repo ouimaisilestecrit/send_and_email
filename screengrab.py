@@ -1,4 +1,4 @@
-"""Grab pictures."""
+"""Screengrab, capture, grab pictures but send."""
 
 import imghdr
 import locale
@@ -29,12 +29,14 @@ except ModuleNotFoundError as e:
     print("Some Modules are missing: {}".format(e))
 
 DIRNAME = os.path.dirname(__file__)
-IMG_BASE = os.path.normpath(os.path.join(DIRNAME, 'images/base'))
-IMG_MAIL = os.path.normpath(os.path.join(DIRNAME, 'images/mail'))
-IMG_TEMP = os.path.normpath(os.path.join(DIRNAME, 'images/temp'))
-IMG_MAIL_LIST = os.listdir(IMG_MAIL)
-IMG_TEMP_LIST = os.listdir(IMG_TEMP)
+TEMPLATES = os.path.normpath(os.path.join(DIRNAME, 'resources/templates'))
+IMAGES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources/images'))
+BIN_DIR = os.path.normpath(os.path.join(DIRNAME, 'bin'))
+IMG_BASE = os.path.normpath(os.path.join(IMAGES_DIR, 'base'))
+IMG_MAIL = os.path.normpath(os.path.join(IMAGES_DIR, 'mail'))
+IMG_TEMP = os.path.normpath(os.path.join(IMAGES_DIR, 'temp'))
 PICKLE_FILENAME = "programs.pickle"
+USERS_FILENAME = 'users.txt'
 # email credentials
 MAIL_LOGIN = os.environ['EDN_LOGIN']
 MAIL_PASSW = os.environ['EDN_PASSWORD']
@@ -58,20 +60,25 @@ HOME_URL = r"https://altarea-partenaires.com/accueil/"
 # template dictionary of file's message and subjects
 TEMPLATE_DICT = OrderedDict([
     (0,
-     ['template.txt',
-      "des nouvelles de ventes d'Altarea Partenaires !"]),
+     [os.path.normpath(os.path.join(TEMPLATES, 'template.txt')),
+        [
+            "ça baisse mais ça va remonter, venez consulter l'état de l'offre qui a bougé dans la corbeille d'Altarea Partenaires !",
+            "venez découvrir ce qui a changé dans les « deux » programmes parmi les offres d'Altarea Partenaires !",
+            "ça galope du côté d'Altarea Partenaires, venez découvrir les « {} » mouvements parmi les offres !",
+            "ça va déménager ! Venez découvrir les « {} » mouvements parmi les offres d'Altarea Partenaires !"
+        ]]),
     (1,
-     ['template_no_picture.txt',
-      "aucune nouveauté sur les ventes d'Altarea Partenaires !"]),
+     [os.path.normpath(os.path.join(TEMPLATES, 'template_no_picture.txt')),
+      r"pour le moment rien n'a bougé du côté des offres d'Altarea Partenaires !"]),
     (2,
-     ['template_not_available.txt',
-      "Alerte ! Problème de connexion sur Altarea Partenaires !"])])
+     [os.path.normpath(os.path.join(TEMPLATES, 'template_not_available.txt')),
+      r"Alerte ! Problème de connexion sur Altarea Partenaires !"])])
 
 # WEBDRIVER
 EXECUTABLE_PATH = r"C:\Program Files (x86)\chromedriver.exe"
 
 # LOGGING
-LOG_PATH = os.path.normpath(os.path.join(DIRNAME, "logs"))
+LOG_PATH = os.path.normpath(os.path.join(DIRNAME, "log"))
 LOG_FORMAT = "[%(asctime)s - %(name)s] - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
 LOG_EXT = ".log"
 LOG_FILE = os.path.join(
@@ -84,6 +91,20 @@ logging.basicConfig(
     format=LOG_FORMAT)
 
 logger = logging.getLogger()
+
+
+def sub_format(size, sub):
+    """Return the appropiate message."""
+    if size == 1:
+        return sub[0].format(size)
+    if size == 2:
+        return sub[1].format(size)
+    if size > 2 and size <= 5:
+        return sub[2].format(size)
+    if size > 5:
+        return sub[3].format(size)
+    else:
+         return "Au-dessus c'est le soleil..."
 
 
 def elapsed_time(duration):
@@ -130,16 +151,17 @@ def read_template(filename):
     return Template(template_file_content)
 
 
-def send_mail(filename, sub, folder=IMG_MAIL):
+def send_mail(filename, sub, size=None, folder=IMG_MAIL):
     """Send email with attachments."""
     # read contacts
-    names, emails = get_users('users.txt')
+    names, emails = get_users(
+        os.path.normpath(os.path.join(TEMPLATES, USERS_FILENAME)))
 
     # set timecode on email's subject
     locale.setlocale(locale.LC_TIME, "fr_FR")
     subject = "{at} : {sub}".format(
         **{'at': dt.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
-           'sub': sub})
+           'sub': sub if size is None else sub_format(size, sub)})
 
     # for each contact, send the email:
     for name, email in zip(names, emails):
@@ -160,7 +182,9 @@ def send_mail(filename, sub, folder=IMG_MAIL):
         # Open the files in binary mode.
         # Use imghdr to figure out the
         # MIME subtype for each specific image.
-        if folder:
+        length_folder = len(os.listdir(folder))
+        if length_folder:
+            logger.info("Envoi de « %d fichier(s) »", length_folder)
             for file_ in os.listdir(folder):
                 file_ = os.path.normpath(os.path.join(folder, file_))
                 with open(file_, 'rb') as fp:
@@ -411,10 +435,10 @@ def number_of_page(ele, per_page):
     return num
 
 
-def fetch_main_data(driver, program, i, page, pages):
+def fetch_main_data(driver, program, index, page, pages):
     """Fetch main program data."""
     logger.info("Page %d sur %d", page, pages)
-    logger.info("Programme %d", i)
+    logger.info("Programme %d", index)
 
     # residence
     residence_name = get_text(program, r'font-regular')
@@ -432,7 +456,7 @@ def fetch_main_data(driver, program, i, page, pages):
     # move element to program to capture
     xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
     action = ActionChains(driver)
-    ele = program.find_element_by_xpath(xpath_tmpl.format(i))
+    ele = program.find_element_by_xpath(xpath_tmpl.format(index))
     action.move_to_element(ele).perform()
     time.sleep(2)
 
@@ -452,7 +476,6 @@ def fetch_main_data(driver, program, i, page, pages):
 
 def clear_files(folder=IMG_MAIL):
     """Clear files."""
-    logger.info("Nettoyage du répertoire : %s", os.path.basename(folder))
     for ele in os.listdir(folder):
         try:
             os.remove(os.path.normpath(os.path.join(folder, ele)))
@@ -474,7 +497,7 @@ def send_direct_email():
         # open your session
         if not connect(driver, 3):
             if driver.current_url == ERR_URL and len(os.listdir(IMG_TEMP)) == 0:
-                send_mail(*TEMPLATE_DICT[2], IMG_TEMP_LIST)
+                send_mail(*TEMPLATE_DICT[2])
                 state = True
         # if acces to website then relaunch grab function
         grab()
@@ -502,19 +525,19 @@ def move_file(filename, dirpath=IMG_TEMP, dst_path=IMG_MAIL):
         logger.error("Ce titre existe déjà : %s", err)
 
 
-def dump_to_pickle(content):
+def dump_to_pickle(filename, content):
     """Dump to pickle file."""
-    with open("programs.pickle", "wb") as pickle_file:
+    with open(filename, "wb") as pickle_file:
         return pickle.dump(content, pickle_file)
 
 
-def load_from_pickle():
+def load_former(filename):
     """Load from pickle file."""
-    with open("programs.pickle", "rb") as pickle_file:
+    with open(filename, "rb") as pickle_file:
         return pickle.load(pickle_file)
 
 
-def load_from_folder(folder):
+def get_streams(folder):
     """Load program filenames."""
     files = set()
     items = os.listdir(folder)
@@ -523,69 +546,71 @@ def load_from_folder(folder):
     return files
 
 
-def find_program(base, temp):
+def find_program(former, stream):
     """Find programs."""
     try:
-        diff = temp - base
-        assert len(diff) != 0
+        val = stream - former
+        assert len(val) != 0
     except AssertionError:
         logger.warning("Il n'y a aucun changement")
         return None
     else:
-        logger.info("Il y a « %d » changement(s)", len(diff))
-        return diff
+        logger.info("Il y a « %d » changement(s)", len(val))
+        return val
 
 
 def dispatch():
     """Diagnose programs."""
-    if not os.path.exists(PICKLE_FILENAME):
+    pickle_file = os.path.normpath(os.path.join(BIN_DIR, PICKLE_FILENAME))
+    if not os.path.exists(pickle_file):
         # create a pickle file
-        base_set = load_from_folder(IMG_BASE)
-        dump_to_pickle(base_set)
+        previous_set = get_streams(IMG_BASE)
+        dump_to_pickle(pickle_file, previous_set)
 
     # load programs from pickle file saved
-    base = load_from_pickle()
-    temp = load_from_folder(IMG_TEMP)
+    former = load_former(pickle_file)
+    stream = get_streams(IMG_TEMP)
 
-    program = find_program(base, temp)
+    # comparison
+    program = find_program(former, stream)
     if program is None:
         logger.info("Aucun changement, envoi du courriel approprié")
+        clear_files()
         send_mail(*TEMPLATE_DICT[1])
+
+        # sync with the last update
+        older = former - stream
+        if older:
+            logger.info("Synchronisation avec la dernière mise à jour")
+            dump_to_pickle(pickle_file, stream)
     else:
-        logger.info("Analyse plus approfondie d'au moins un programme")
+        logger.info("Analyse de(s) programme(s) mis à jour")
         # step 1 - updated program
-        newers = temp - base
-        logger.info("« %d » nouveau(x) programme(s)", len(newers))
+        updated = stream - former
+        logger.info("« %d » programme(s) mis à jour", len(updated))
 
-        # step 2 - old program to remove from base
-        olders = base - temp
-        logger.info("« %d » programme(s) mis à jour", len(newers))
-        for an_old in olders:
-            base.remove(an_old)
+        # step 2 - sync with the last update
+        logger.info("Synchronisation avec la dernière mise à jour")
+        dump_to_pickle(pickle_file, stream)
 
-        # step 3 - feed base with last update
-        logger.info("Set de base avant maj : %d", len(base))
-        for a_new in newers:
-            base.add(a_new)
-        logger.info("Mis à jour du set de base : %d", len(base))
-
-        # step 4 - save new base pickle file
-        logger.info("Sauvegarde du set de base")
-        dump_to_pickle(base)
-
-        # step 5 - delete mail folder
+        # step 3 - Deleting files from the mail directory
         logger.info("Suppression des fichiers du répertoire mail")
         clear_files()
 
-        # step 6 - move updated program from temp to mail directory
-        logger.info("Envoi de(s) programme(s) au répertoire mail")
-        for a_new in newers:
-            move_file(a_new)
-
-        # step 7 - send email
-        logger.info("Envoi de mail")
-        send_mail(*TEMPLATE_DICT[0])
-        logger.info("Mail envoyé")
+        # step 4 - moving updated program from temp to mail directory
+        logger.info("Envoi de(s) programme(s) vers le répertoire mail")
+        for an_update in updated:
+            move_file(an_update)
+        # set_trace()
+        # step 5 - send email
+        if IMG_MAIL:
+            logger.info("Envoi de mail")
+            len_img_mail = len(os.listdir(IMG_MAIL))
+            send_mail(*TEMPLATE_DICT[0], len_img_mail)
+            logger.info("Mail envoyé")
+        else:
+            logger.info("Aucun changement, envoi du courriel approprié")
+            send_mail(*TEMPLATE_DICT[1])
     return True
 
 
@@ -593,12 +618,11 @@ def is_picture_to_email():
     """Check if there is picture to send."""
     logger.info("Vérification s'il y a des images à envoyer")
     state = False
-    img_mail = os.listdir(IMG_MAIL)
-    img_temp = os.listdir(IMG_TEMP)
-    if len(img_mail) != 0 and len(img_temp) != 0:
-        send_mail(*TEMPLATE_DICT[0])
+    len_img_mail = len(os.listdir(IMG_MAIL))
+    len_img_temp = len(os.listdir(IMG_TEMP))
+    if len_img_mail != 0 and len_img_temp != 0:
+        send_mail(*TEMPLATE_DICT[0], len_img_mail)
         state = True
-
     return state
 
 
@@ -613,6 +637,8 @@ def main():
             logger.info("Mail envoyé suite à la vérification")
 
         # initialise folder
+        logger.info("Suppression des fichiers du répertoire : %s",
+            os.path.basename(IMG_TEMP))
         clear_files(IMG_TEMP)
 
         nb_retries = 3  # number of attempts allowed after any failures
