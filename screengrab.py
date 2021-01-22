@@ -14,6 +14,9 @@ from datetime import datetime as dt
 from email.message import EmailMessage
 from string import Template
 
+from pdb import set_trace
+from pprint import pprint
+
 try:
     from selenium import webdriver
     from selenium.webdriver.common.by import By
@@ -51,7 +54,6 @@ PASSWORD = os.environ["ALTAREA_PASSWORD"]
 
 # constants
 ALTAREA_URL = "https://altarea-partenaires.com"
-IDF_REGION = "Ile-de-France"
 PROGRAMS_PER_PAGE = 12
 ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
 ERR_MSG = r"Une erreur critique est survenue sur votre site"
@@ -209,7 +211,7 @@ def grab():
     try:
         # go to website of concern
         driver.get(ALTAREA_URL)
-        time.sleep(10)
+        time.sleep(6)
         logger.info("Chargement de la page d'accueil : %s", driver.title)
 
         # open your session
@@ -224,7 +226,7 @@ def grab():
 
         # search by region of concern
         logger.info("Lancement de la recherche par critères")
-        select_by_region(driver, IDF_REGION)
+        select_idf_region(driver)
 
         # collect data
         programs_element = driver.find_element_by_id('results-prog')
@@ -370,19 +372,21 @@ def handle_modal(driver, locator):
         first_modal.click()
 
 
-def select_by_region(driver, region):
-    """Select a region."""
+def select_idf_region(driver):
+    """Select the region."""
     logger.info("Chargement des informations pour la région Ile-de-France")
-    dept_combo_box = driver.find_element_by_xpath(
+    # go to region/department's combo box
+    combo_box = driver.find_element_by_xpath(
         "//*[@id='select2-departements-container']")
-    submit_by_program = driver.find_element_by_xpath(
-        "//*[@id='form-recherche']/div[4]/div/button[1]")
-    action = ActionChains(driver)
-    action.move_to_element(dept_combo_box).click()
-    action.send_keys(region)
-    action.send_keys(Keys.ENTER)
-    action.move_to_element(submit_by_program).click()
-    action.perform()
+    combo_box.click()
+    time.sleep(1)
+    # select IDF region in the combo-box
+    combo_box.find_element_by_xpath(
+        "//*[@id='select2-departements-results']/li[13]").click()
+    time.sleep(1)
+    # submit the program
+    driver.find_element_by_xpath(
+        "//*[@id='form-recherche']/div[4]/div/button[1]").click()
     time.sleep(3)
 
 
@@ -497,7 +501,9 @@ def send_direct_email():
                 send_mail(*TEMPLATE_DICT[2])
                 state = True
         # if acces to website then relaunch grab function
-        grab()
+        grabbed = grab()
+        if grabbed:
+            dispatch()
 
     except Exception as ex:
         logger.error("Un problème est survenu : %s", ex)
@@ -611,27 +617,11 @@ def dispatch():
     return True
 
 
-def is_picture_to_email():
-    """Check if there is picture to send."""
-    logger.info("Vérification s'il y a des images à envoyer")
-    state = False
-    len_img_mail = len(os.listdir(IMG_MAIL))
-    len_img_temp = len(os.listdir(IMG_TEMP))
-    if len_img_mail != 0 and len_img_temp != 0:
-        send_mail(*TEMPLATE_DICT[0], len_img_mail)
-        state = True
-    return state
-
-
 def main():
     """Process the capture of pictures."""
     try:
         start = time.time()
         logger.info("Lancement du processus")
-
-        # check if there is picture to send
-        if is_picture_to_email():
-            logger.info("Mail envoyé suite à la vérification")
 
         # initialise folder
         logger.info("Suppression des fichiers du répertoire : %s",
