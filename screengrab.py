@@ -61,12 +61,11 @@ HOME_URL = r"https://altarea-partenaires.com/accueil/"
 TEMPLATE_DICT = OrderedDict([
     (0,
      [os.path.normpath(os.path.join(TEMPLATES, 'template.txt')),
-        [
-            "ça baisse mais ça va remonter, venez consulter l'état de l'offre qui a bougé dans la corbeille d'Altarea Partenaires !",
-            "venez découvrir ce qui a changé dans les « deux » programmes parmi les offres d'Altarea Partenaires !",
-            "ça galope du côté d'Altarea Partenaires, venez découvrir les « {} » mouvements parmi les offres !",
-            "ça va déménager ! Venez découvrir les « {} » mouvements parmi les offres d'Altarea Partenaires !"
-        ]]),
+      [
+          "ça baisse mais ça va remonter, venez consulter l'état de l'offre qui a bougé dans la corbeille d'Altarea Partenaires !",
+          "venez découvrir ce qui a changé dans les « deux » programmes parmi les offres d'Altarea Partenaires !",
+          "ça galope du côté d'Altarea Partenaires, venez découvrir les « {} » mouvements parmi les offres !",
+          "ça va déménager ! Venez découvrir les « {} » mouvements parmi les offres d'Altarea Partenaires !"]]),
     (1,
      [os.path.normpath(os.path.join(TEMPLATES, 'template_no_picture.txt')),
       r"pour le moment rien n'a bougé du côté des offres d'Altarea Partenaires !"]),
@@ -99,12 +98,11 @@ def sub_format(size, sub):
         return sub[0].format(size)
     if size == 2:
         return sub[1].format(size)
-    if size > 2 and size <= 5:
+    if 2 < size <= 5:
         return sub[2].format(size)
     if size > 5:
         return sub[3].format(size)
-    else:
-         return "Au-dessus c'est le soleil..."
+    return "Au-dessus c'est le soleil..."
 
 
 def elapsed_time(duration):
@@ -601,7 +599,7 @@ def dispatch():
         logger.info("Envoi de(s) programme(s) vers le répertoire mail")
         for an_update in updated:
             move_file(an_update)
-        # set_trace()
+
         # step 5 - send email
         if IMG_MAIL:
             logger.info("Envoi de mail")
@@ -638,7 +636,7 @@ def main():
 
         # initialise folder
         logger.info("Suppression des fichiers du répertoire : %s",
-            os.path.basename(IMG_TEMP))
+                    os.path.basename(IMG_TEMP))
         clear_files(IMG_TEMP)
 
         nb_retries = 3  # number of attempts allowed after any failures
