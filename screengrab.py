@@ -35,7 +35,7 @@ IMG_MAIL = os.path.normpath(os.path.join(IMAGES_DIR, 'mail'))
 IMG_TEMP = os.path.normpath(os.path.join(IMAGES_DIR, 'temp'))
 RESOURCES_FILENAME = 'resources.inf'
 PICKLE_FILENAME = "programs.pickle"
-USERS_FILENAME = 'users1.txt'
+USERS_FILENAME = 'users.txt'
 # email credentials
 MAIL_LOGIN = os.environ['EDN_LOGIN']
 MAIL_PASSW = os.environ['EDN_PASSWORD']
