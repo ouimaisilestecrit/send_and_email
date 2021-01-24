@@ -14,13 +14,9 @@ from datetime import datetime as dt
 from email.message import EmailMessage
 from string import Template
 
-from pdb import set_trace
-from pprint import pprint
-
 try:
     from selenium import webdriver
     from selenium.webdriver.common.by import By
-    from selenium.webdriver.common.keys import Keys
     from selenium.webdriver.common.action_chains import ActionChains
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.remote.webelement import WebElement
@@ -35,11 +31,11 @@ DIRNAME = os.path.dirname(__file__)
 TEMPLATES = os.path.normpath(os.path.join(DIRNAME, 'resources/templates'))
 IMAGES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources/images'))
 BIN_DIR = os.path.normpath(os.path.join(DIRNAME, 'bin'))
-IMG_BASE = os.path.normpath(os.path.join(IMAGES_DIR, 'base'))
 IMG_MAIL = os.path.normpath(os.path.join(IMAGES_DIR, 'mail'))
 IMG_TEMP = os.path.normpath(os.path.join(IMAGES_DIR, 'temp'))
+RESOURCES_FILENAME = 'resources.inf'
 PICKLE_FILENAME = "programs.pickle"
-USERS_FILENAME = 'users.txt'
+USERS_FILENAME = 'users1.txt'
 # email credentials
 MAIL_LOGIN = os.environ['EDN_LOGIN']
 MAIL_PASSW = os.environ['EDN_PASSWORD']
@@ -64,9 +60,9 @@ TEMPLATE_DICT = OrderedDict([
     (0,
      [os.path.normpath(os.path.join(TEMPLATES, 'template.txt')),
       [
-          "ça baisse mais ça va remonter, venez consulter l'état de l'offre qui a bougé dans la corbeille d'Altarea Partenaires !",
+          "un seul programme a bougé dans la corbeille d'Altarea Partenaires !",
           "venez découvrir ce qui a changé dans les deux programmes parmi les offres d'Altarea Partenaires !",
-          "ça galope du côté d'Altarea Partenaires, venez découvrir les {} mouvements parmi les offres !",
+          "ça galope du côté d'Altarea Partenaires ! Venez découvrir les {} mouvements parmi les offres !",
           "ça va déménager ! Venez découvrir les {} mouvements parmi les offres d'Altarea Partenaires !"]]),
     (1,
      [os.path.normpath(os.path.join(TEMPLATES, 'template_no_picture.txt')),
@@ -150,11 +146,32 @@ def read_template(filename):
     return Template(template_file_content)
 
 
+def stringify(lst):
+    """Return list programs's main information as a string."""
+    tab = []
+    for index, img_filename in enumerate(sorted(lst)):
+        img_name = img_filename.split('.png')[0]
+        items = [' '.join(item.split('_')) for item in img_name.split('=')]
+        tab.append('{line}. {name} - {city} : {size}'.format(
+            **{'line': index+1,
+               'name': items[0],
+               'city': items[1],
+               'size': items[2]}))
+    return ''.join(['{}\n\n'.format(i) for i in tab])
+
+
 def send_mail(filename, sub, size=None, folder=IMG_MAIL):
     """Send email with attachments."""
     # read contacts
     names, emails = get_users(
         os.path.normpath(os.path.join(TEMPLATES, USERS_FILENAME)))
+
+    # feed the email with programs's main information when size is available
+    msg_template = read_template(filename)
+    if size is not None:
+        items = [os.path.basename(i) for i in os.listdir(folder)]
+        string = stringify(items)
+        msg_template = Template(msg_template.safe_substitute(LIST=string))
 
     # set timecode on email's subject
     locale.setlocale(locale.LC_TIME, "fr_FR")
@@ -165,7 +182,6 @@ def send_mail(filename, sub, size=None, folder=IMG_MAIL):
     # for each contact, send the email:
     for name, email in zip(names, emails):
         # add in the actual person name to template
-        msg_template = read_template(filename)
         message = msg_template.substitute(PERSON_NAME=name.title())
 
         # Create the container email message.
@@ -181,9 +197,8 @@ def send_mail(filename, sub, size=None, folder=IMG_MAIL):
         # Open the files in binary mode.
         # Use imghdr to figure out the
         # MIME subtype for each specific image.
-        length_folder = len(os.listdir(folder))
-        if length_folder:
-            logger.info("Envoi de « %d fichier(s) »", length_folder)
+        if size is not None:
+            logger.info("Envoi de « %d fichier(s) »", size)
             for file_ in os.listdir(folder):
                 file_ = os.path.normpath(os.path.join(folder, file_))
                 with open(file_, 'rb') as fp:
@@ -424,7 +439,7 @@ def get_text(driver, locator):
     try:
         return driver.find_element_by_class_name(locator).text
     except:
-        return "No value"
+        return "Peut-être le dernier logement disponible"
 
 
 def number_of_page(ele, per_page):
@@ -464,7 +479,7 @@ def fetch_main_data(driver, program, index, page, pages):
     # save screenshot with its appropiate filename
     filename = os.path.normpath(
         os.path.join(
-            IMG_TEMP, "{name}_{city}_{size}.png".format(
+            IMG_TEMP, "{name}={city}={size}.png".format(
                 **{'name': '_'.join(residence_name.split()),
                    'city': '_'.join(commune_name.split()),
                    'size': '_'.join(
@@ -497,13 +512,15 @@ def send_direct_email():
 
         # open your session
         if not connect(driver, 3):
-            if driver.current_url == ERR_URL and len(os.listdir(IMG_TEMP)) == 0:
+            if driver.current_url == ERR_URL:
+                driver.quit()
                 send_mail(*TEMPLATE_DICT[2])
                 state = True
-        # if acces to website then relaunch grab function
-        grabbed = grab()
-        if grabbed:
-            dispatch()
+            else:
+                # if acces to website then relaunch grab function
+                grabbed = grab()
+                if grabbed:
+                    dispatch()
 
     except Exception as ex:
         logger.error("Un problème est survenu : %s", ex)
@@ -540,6 +557,25 @@ def load_former(filename):
         return pickle.load(pickle_file)
 
 
+def read_fileconfig():
+    """Read configuration file."""
+    ret = set()
+    filename = os.path.normpath(os.path.join(BIN_DIR, RESOURCES_FILENAME))
+    with open(filename, 'r', encoding='utf-8') as lines:
+        for line in lines:
+            line = line.strip()
+            ret.add(line)
+    return ret
+
+
+def save_fileconfig():
+    """Save configuration file."""
+    filename = os.path.normpath(os.path.join(BIN_DIR, RESOURCES_FILENAME))
+    with open(filename, 'w', encoding='utf-8') as f:
+        for item in os.listdir(IMG_TEMP):
+            f.write('{}\n'.format(item))
+
+
 def get_streams(folder):
     """Load program filenames."""
     files = set()
@@ -567,7 +603,7 @@ def dispatch():
     pickle_file = os.path.normpath(os.path.join(BIN_DIR, PICKLE_FILENAME))
     if not os.path.exists(pickle_file):
         # create a pickle file
-        previous_set = get_streams(IMG_BASE)
+        previous_set = read_fileconfig()
         dump_to_pickle(pickle_file, previous_set)
 
     # load programs from pickle file saved
@@ -635,6 +671,7 @@ def main():
             # condition to break while loop
             grabbed = grab()
             if grabbed:
+                save_fileconfig()
                 dispatched = dispatch()
                 if dispatched:
                     break
