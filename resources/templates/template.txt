@@ -1,6 +1,10 @@
 Salut ${PERSON_NAME},
 
-Tu trouveras ci-joint(s) les dernières mises à jour d'Altarea Partenaires ! : https://altarea-partenaires.com/accueil/
+Tu trouveras ci-dessous les principales informations, depuis ma dernière notification, sur les programmes immobiliers d'Altarea Partenaires ! pour la région Ile-de-France :
+
+${LIST}
+Pour les consulter sur le site: https://altarea-partenaires.com/accueil/
+
 
 L'heure indiquée, dans l'objet de ce mail, n'indique que le moment d'envoi du mail et non pas celui de la capture.
 
