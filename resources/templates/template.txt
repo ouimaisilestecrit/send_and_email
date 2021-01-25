@@ -2,7 +2,7 @@ Salut ${PERSON_NAME},
 
 Tu trouveras ci-dessous les principales informations, depuis ma dernière notification, sur les programmes immobiliers d'Altarea Partenaires ! pour la région Ile-de-France :
 
-${LIST}
+${MAIN_INFO}
 Pour les consulter sur le site: https://altarea-partenaires.com/accueil/
 
 

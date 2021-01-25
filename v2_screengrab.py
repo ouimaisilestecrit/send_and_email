@@ -13,6 +13,11 @@ from collections import OrderedDict
 from datetime import datetime as dt
 from email.message import EmailMessage
 from string import Template
+from functools import reduce
+
+from pprint import pprint
+from pdb import set_trace
+
 
 try:
     from selenium import webdriver
@@ -38,7 +43,7 @@ TEMP_DIR = os.path.normpath(os.path.join(IMAGES_DIR, 'temp'))
 # filenames
 RESOURCES_FILENAME = 'resources.inf'
 PICKLE_FILENAME = "programs.pickle"
-RECEIVERS_FILENAME = 'destinataires.txt'
+RECEIVERS_FILENAME = 'destinataires1.txt'
 MAIN_TEMPLATE_FILENAME = 'template.txt'
 NO_PICTURE_TEMPLATE_FILENAME = 'template_no_picture.txt'
 NOT_AVAILABLE_TEMPLATE_FILENAME = 'template_not_available.txt'
@@ -72,6 +77,8 @@ ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
 ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
+MAX_FILE_SIZE = 1965052
+# MAX_FILE_SIZE = 157286400
 # separators
 MAIN_SEP = '='  #  equal sign for main information
 WORD_SEP = '_'  #  underscore for word's separator
@@ -174,15 +181,54 @@ def stringify_main_info(lst):
         item = item_filename.split(IMG_FILE_EXTENSION)[0]
         item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
         tab.append('{line}. {name} - {city} : {size}'.format(
-            **{'line': i+1,
+            **{'line': str(i+1).rjust(2),
                'name': item[0],
                'city': item[1],
                'size': item[2]}))
     return ''.join(['{}\n\n'.format(i) for i in tab])
 
 
+def check_size():
+    """Return the size limit of an email message."""
+    smtp = smtplib.SMTP(MAILBOX_HOST)    
+    smtp.ehlo()    
+    max_limit_in_bytes = int( smtp.esmtp_features['size'] )
+    return max_limit_in_bytes
+
+
+def get_list_size(lst):
+    """Return the size of files in a folder."""
+    list_of_length = [os.path.getsize(i) for i in lst]
+    ret = reduce(lambda x, y: x + y, list_of_length)
+    return ret
+
+
+def share_by_size():
+    """Share by email's limit size."""
+    ret = []
+    tab = []
+    path = os.path.abspath(MAIL_DIR)
+    for item in os.listdir(MAIL_DIR):
+        tab.append(item)
+        length = get_list_size([os.path.join(path, i) for i in tab])
+        while length > MAX_FILE_SIZE:  # 157 286 400 bytes
+            ret.append(tab)
+            tab = []
+            break
+    ret.append(tab)
+    return ret
+
+
 def send_mail(filename, sub, size=None, folder=MAIL_DIR):
     """Send email with attachments."""
+    path = os.path.abspath(folder)
+    list_of_files = [os.path.join(path, i) for i in os.listdir(folder)]
+    
+    set_trace()
+    
+    mail_folder = os.listdir(folder)
+    if get_list_size(list_of_files) > MAX_FILE_SIZE:
+        mail_folder = share_by_size()
     # read contacts
     names, emails = get_contacts(RECEIVERS_FILE)
 
@@ -191,6 +237,7 @@ def send_mail(filename, sub, size=None, folder=MAIL_DIR):
     if size is not None:
         items = [os.path.basename(i) for i in os.listdir(folder)]
         string = stringify_main_info(items)
+        set_trace()
         a_template = Template(a_template.safe_substitute(MAIN_INFO=string))
 
     # set timecode on email's subject
@@ -219,9 +266,10 @@ def send_mail(filename, sub, size=None, folder=MAIL_DIR):
         # MIME subtype for each specific image.
         if size is not None:
             logger.info("Envoi de « %d fichier(s) »", size)
-            for file_ in os.listdir(folder):
+            for file_ in mail_folder:
                 file_ = os.path.normpath(os.path.join(folder, file_))
                 with open(file_, 'rb') as fp:
+                    # logger.info("Fichier : %s", file_)
                     img_data = fp.read()
                 msg.add_attachment(img_data, maintype='image',
                                    subtype=imghdr.what(None, img_data))
@@ -234,6 +282,10 @@ def send_mail(filename, sub, size=None, folder=MAIL_DIR):
             # login with email credential
             s.login(MAIL_LOGIN, MAIL_PASSW)
             s.send_message(msg)
+            # ack = s.set_debuglevel(2)
+            logger.info("sent=========")
+            # set_trace()
+            # logger.info("s.set_debuglevel(2): %s", s.set_debuglevel(2))
 
         del msg
 
@@ -691,11 +743,10 @@ def main():
             # condition to break while loop
             grabbed = grab()
             if grabbed:
-                break
-                # save_fileconfig()
-                # dispatched = dispatch()
-                # if dispatched:
-                    # break
+                save_fileconfig()
+                dispatched = dispatch()
+                if dispatched:
+                    break
 
             nb_retries -= 1
 
@@ -716,4 +767,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    send_mail(*TEMPLATE_DICT[0], 45)
+    # share_by_size()
+    # main()
