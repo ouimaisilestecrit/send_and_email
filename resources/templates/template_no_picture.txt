@@ -1,8 +1,9 @@
-Salut ${PERSON_NAME},
+Bonjour,
 
 Il n'y a aucun changement dans les ventes d'Altarea Partenaires pour le moment.
 
-Bien à toi,
+Bien à vous,
+
 
 Cet e-mail vous a été envoyé automatiquement, merci de ne pas y répondre.
 

@@ -5,13 +5,15 @@ import locale
 import logging
 import os
 import pickle
+import schedule
 import smtplib
 import sys
 import time
-
+import traceback
 from collections import OrderedDict
 from datetime import datetime as dt
 from email.message import EmailMessage
+from functools import reduce, wraps
 from string import Template
 
 try:
@@ -66,12 +68,14 @@ LOGIN = os.environ["ALTAREA_LOGIN"]
 PASSWORD = os.environ["ALTAREA_PASSWORD"]
 
 # constants
-ALTAREA_URL = "https://altarea-partenaires.com"
+ALTAREA_URL = r"https://altarea-partenaires.com"
 PROGRAMS_PER_PAGE = 12
 ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
 ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
+MAX_FILE_SIZE = 157286400//15  #  (157286400/15) / 1e6 = 10,48 Mo
+
 # separators
 MAIN_SEP = '='  #  equal sign for main information
 WORD_SEP = '_'  #  underscore for word's separator
@@ -110,6 +114,17 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 
+def with_logging(func):
+    """Generic logging to my scheduler."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print("LOG: Running job %s" % func.__name__)
+        result = func(*args, **kwargs)
+        print("LOG: Job %s completed" % func.__name__)
+        return result
+    return wrapper
+
+
 def sub_format(size, sub):
     """Return the appropiate subject's message."""
     if size == 1:
@@ -141,19 +156,19 @@ def elapsed_time(duration):
     return ret
 
 
-def get_contacts(filename):
-    """Read contacts.
+def get_emails(filename):
+    """Read emails adresses.
 
     Function to read the contacts from a given contact file
-    and return a list of names and email adresses.
+    and return a list of email adresses.
     """
-    names = []
-    emails = []
-    with open(filename, 'r', encoding='utf-8') as contacts_file:
-        for a_contact in contacts_file:
-            names.append(a_contact.split()[0])
-            emails.append(a_contact.split()[1])
-    return names, emails
+    emails = set()
+    with open(filename, 'r', encoding='utf-8') as emails_file:
+        for an_email in emails_file:
+            an_email = an_email.strip()
+            an_email = an_email.split()[1]
+            emails.add(an_email)
+    return emails
 
 
 def read_template(filename):
@@ -174,24 +189,48 @@ def stringify_main_info(lst):
         item = item_filename.split(IMG_FILE_EXTENSION)[0]
         item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
         tab.append('{line}. {name} - {city} : {size}'.format(
-            **{'line': i+1,
+            **{'line': str(i+1).rjust(2),
                'name': item[0],
                'city': item[1],
                'size': item[2]}))
     return ''.join(['{}\n\n'.format(i) for i in tab])
 
 
+def check_size():
+    """Return the size limit of an email message."""
+    smtp = smtplib.SMTP(MAILBOX_HOST)
+    smtp.ehlo()
+    max_limit_in_bytes = int(smtp.esmtp_features['size'])
+    return max_limit_in_bytes
+
+
+def get_list_size(lst):
+    """Return the size of files in bytes."""
+    list_of_length = [os.path.getsize(i) for i in lst]
+    ret = reduce(lambda x, y: x + y, list_of_length)
+    return ret
+
+
+def share_by_lots(folder):
+    """Share by lots."""
+    ret = []
+    tab = []
+    path = os.path.abspath(folder)
+    for item in os.listdir(folder):
+        tab.append(item)
+        length = get_list_size([os.path.join(path, i) for i in tab])
+        while length > MAX_FILE_SIZE:  # 157 286 400 bytes
+            ret.append(tab)
+            tab = []
+            break
+    ret.append(tab)
+    return ret
+
+
 def send_mail(filename, sub, size=None, folder=MAIL_DIR):
     """Send email with attachments."""
-    # read contacts
-    names, emails = get_contacts(RECEIVERS_FILE)
-
-    # feed the email with programs's main information when size is available
+    # read template
     a_template = read_template(filename)
-    if size is not None:
-        items = [os.path.basename(i) for i in os.listdir(folder)]
-        string = stringify_main_info(items)
-        a_template = Template(a_template.safe_substitute(MAIN_INFO=string))
 
     # set timecode on email's subject
     locale.setlocale(locale.LC_TIME, "fr_FR")
@@ -199,43 +238,106 @@ def send_mail(filename, sub, size=None, folder=MAIL_DIR):
         **{'at': dt.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
            'sub': sub if size is None else sub_format(size, sub)})
 
-    # for each contact, send the email:
-    for name, email in zip(names, emails):
-        # add in the actual person name to template
-        message = a_template.substitute(PERSON_NAME=name.title())
+    # Create the container email message.
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = MAIL_LOGIN
+    msg['To'] = ', '.join(get_emails(RECEIVERS_FILE))
+    msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
 
-        # Create the container email message.
-        msg = EmailMessage()
-        msg['Subject'] = subject
-        msg['From'] = MAIL_LOGIN
-        msg['To'] = email
-        msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
+    # detect kind of message to process allowing to size
+    if not isinstance(size, type(None)):
+        logger.info("Traitement de message avec %d pièce(s) jointe(s)", size)
+        path_ = os.path.abspath(folder)
+        files = os.listdir(folder)
 
-        # add in the message body
-        msg.set_content(message)
+        # determine files' size
+        current_size = get_list_size([os.path.join(path_, i) for i in files])
+        logger.info("Taille de fichier(s) d'envoi(s) : %s",
+                    "{0:.2f} Mo".format(round(current_size/1000000, 2)))
+        if current_size > MAX_FILE_SIZE:
+            lots = share_by_lots(folder)
+            logger.info("Traitement de message par %d envois", len(lots))
+            for i, a_lot in enumerate(lots):
+                flag = add_flag(i+1, len(lots))
+                msg.replace_header('Subject', "{} - {}".format(subject, flag))
+                message_with_attachments(msg, path_, a_lot, a_template, flag)
 
-        # Open the files in binary mode.
-        # Use imghdr to figure out the
-        # MIME subtype for each specific image.
-        if size is not None:
-            logger.info("Envoi de « %d fichier(s) »", size)
-            for file_ in os.listdir(folder):
-                file_ = os.path.normpath(os.path.join(folder, file_))
-                with open(file_, 'rb') as fp:
-                    img_data = fp.read()
-                msg.add_attachment(img_data, maintype='image',
-                                   subtype=imghdr.what(None, img_data))
+                # refresh because we cannot add attachment on
+                # multipart content-type or on non-empty payload
+                msg.replace_header('Content-Type', 'text/plain')
+                msg.set_payload(None)
+        else:
+            message_with_attachments(msg, path_, files, a_template)
+    else:
+        logger.info("Traitement de message sans pièce jointe")
+        message_without_attachment(msg, a_template)
 
-        # Send the email via our own SMTP server.
-        # Terminate the SMTP session and close the connection
-        with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
-            # enable security
-            s.starttls()
-            # login with email credential
-            s.login(MAIL_LOGIN, MAIL_PASSW)
-            s.send_message(msg)
 
-        del msg
+def add_flag(index, length):
+    """Add current flag."""
+    return "Envoi : {index} sur {length}".format(
+        **{'index': index, 'length': length})
+
+
+def message_with_attachments(msg, path_, files, a_template, lots=str()):
+    """Prepare message with an attachment."""
+    # feed the email with programs's main information
+    string = stringify_main_info(files)
+    message = Template(a_template.safe_substitute(MAIN_INFO=string.title()))
+    message = message.substitute(LOTS=lots)
+
+    # add in the message body
+    msg.set_content(message)
+
+    # attach files to message
+    msg = add_attach(msg, [os.path.join(path_, i) for i in files])
+    send(msg)
+
+
+def message_without_attachment(msg, a_template):
+    """Prepare message without any attachment."""
+    # add in the message body
+    msg.set_content(a_template.safe_substitute())
+
+    # send the email
+    send(msg)
+
+
+def add_attach(msg, filenames):
+    """Attach files in binary mode."""
+    logger.info("Ajout de « %d fichier(s) »", len(filenames))
+    for filename in filenames:
+        with open(filename, 'rb') as fp:
+            img_data = fp.read()
+        msg.add_attachment(img_data, maintype='image',
+                           subtype=imghdr.what(None, img_data))
+    return msg
+
+
+def send(msg):
+    """Send the email via our own SMTP server."""
+    # Terminate the SMTP session and close the connection
+    with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
+        # enable security
+        s.starttls()
+        # login with email credential
+        s.login(MAIL_LOGIN, MAIL_PASSW)
+        s.send_message(msg)
+    del msg
+
+
+def wait_loading(drv):
+    """Wait while new page is loading."""
+    logger.info("Attente de chargement de la page")
+    wait_time = 0
+    while drv.execute_script('return document.readyState;') != 'complete' \
+      and wait_time < 10:
+        # Scroll down to bottom to load contents, unnecessary for everyone
+        drv.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        wait_time += 0.1
+        time.sleep(0.1)
+    logger.info("Chargement de la page terminé")
 
 
 def grab():
@@ -246,8 +348,8 @@ def grab():
     try:
         # go to website of concern
         driver.get(ALTAREA_URL)
-        time.sleep(6)
-        logger.info("Chargement de la page d'accueil : %s", driver.title)
+        wait_loading(driver)
+        logger.info("Page d'accueil : %s", driver.title)
 
         # open your session
         if not connect(driver):
@@ -258,10 +360,15 @@ def grab():
         # handle the modal element
         locator = r"//*[@id='first_sign-in_modal']/div/div/div[1]/button"
         handle_modal(driver, locator)
-
+        # sys.exit()
         # search by region of concern
         logger.info("Lancement de la recherche par critères")
         select_idf_region(driver)
+
+        # initialise folder
+        logger.info("Suppression des fichiers du répertoire : %s",
+                    os.path.basename(TEMP_DIR))
+        clear_files(TEMP_DIR)
 
         # collect data
         programs_element = driver.find_element_by_id('results-prog')
@@ -312,25 +419,18 @@ def get_by_xpath(driver, locator):
         return None
 
 
-def get_by_tag_name(driver, locator):
-    """Return an element from its tag name locator."""
-    try:
-        element = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.TAG_NAME, locator)))
-        if not isinstance(element, WebElement):
-            return None
-        return element
-    except:
-        logger.error("An error occurred when selecting from: %s", locator)
-        return None
-
-
 def chrome_driver(executable_path, t=10):
     """Return chrome driver."""
-    driver = webdriver.Chrome(executable_path)
-    driver.implicitly_wait(int(t))
-    driver.maximize_window()
-    return driver
+    try:
+        logger.info("Ouverture du navigateur automatisé : %s", executable_path)
+        driver = webdriver.Chrome(executable_path)
+        driver.maximize_window()
+    except Exception:
+        str = traceback.format_exc()
+        looger.error("%s", str)
+    else:
+        driver.implicitly_wait(int(t))
+        return driver
 
 
 def connect(driver, t=1):
@@ -441,7 +541,7 @@ def get_program_data(driver, all_programs):
 
         # avoid to click next button on the last page
         if page != pages-1:
-            logger.info("Aller à la page suivante")
+            logger.info("Aller à la page %d", page+2)
             driver.find_element_by_class_name('next').click()
             wait_next_page(driver, page+2)
 
@@ -449,7 +549,7 @@ def get_program_data(driver, all_programs):
 def wait_next_page(driver, page, t=1):
     """Wait while next page is loading."""
     next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
-    logger.info("next_url.format(page): %s", next_url.format(page))
+    logger.info("Url : %s", next_url.format(page))
     while True:
         if driver.current_url == next_url.format(page):
             break
@@ -530,7 +630,7 @@ def send_direct_email():
     try:
         # go to website of concern
         driver.get(ALTAREA_URL)
-        time.sleep(10)
+        wait_loading(driver)
         logger.info("Chargement de la page d'accueil : %s", driver.title)
 
         # open your session
@@ -592,6 +692,7 @@ def read_fileconfig():
 
 def save_fileconfig():
     """Save configuration file."""
+    logger.info("Sauvegarde de la configuration")
     with open(RESOURCES_FILE, 'w', encoding='utf-8') as f:
         for item in os.listdir(TEMP_DIR):
             f.write('{}\n'.format(item))
@@ -632,7 +733,7 @@ def dispatch():
 
     # comparison
     program = find_program(former, stream)
-    if program is None:
+    if isinstance(program, type(None)):
         logger.info("Aucun changement, envoi du courriel approprié")
         clear_files()
         send_mail(*TEMPLATE_DICT[1])
@@ -672,17 +773,12 @@ def dispatch():
             send_mail(*TEMPLATE_DICT[1])
     return True
 
-
+@with_logging
 def main():
     """Process the capture of pictures."""
     try:
         start = time.time()
         logger.info("Lancement du processus")
-
-        # initialise folder
-        logger.info("Suppression des fichiers du répertoire : %s",
-                    os.path.basename(TEMP_DIR))
-        clear_files(TEMP_DIR)
 
         nb_retries = 3  # number of attempts allowed after any failures
         while nb_retries > 0:
@@ -691,18 +787,17 @@ def main():
             # condition to break while loop
             grabbed = grab()
             if grabbed:
-                break
-                # save_fileconfig()
-                # dispatched = dispatch()
-                # if dispatched:
-                    # break
+                save_fileconfig()
+                dispatched = dispatch()
+                if dispatched:
+                    break
 
             nb_retries -= 1
 
         else:
             # bad network or bad credential
             if send_direct_email():
-                logger.info('Notification envoyée')
+                logger.info("La notification d'échec de connexion est envoyée")
 
     except FileNotFoundError as err:
         logger.error("Un problème est survenu : %s", err)
@@ -716,4 +811,37 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    schedule.every().monday.at("06:00").do(main)
+    schedule.every().monday.at("10:00").do(main)
+    schedule.every().monday.at("14:00").do(main)
+    schedule.every().monday.at("20:00").do(main)
+
+    schedule.every().tuesday.at("06:00").do(main)
+    schedule.every().tuesday.at("10:00").do(main)
+    schedule.every().tuesday.at("14:00").do(main)
+    schedule.every().tuesday.at("20:00").do(main)
+
+    schedule.every().wednesday.at("06:00").do(main)
+    schedule.every().wednesday.at("10:00").do(main)
+    schedule.every().wednesday.at("14:00").do(main)
+    schedule.every().wednesday.at("20:00").do(main)
+
+    schedule.every().thursday.at("06:00").do(main)
+    schedule.every().thursday.at("10:00").do(main)
+    schedule.every().thursday.at("14:00").do(main)
+    schedule.every().thursday.at("20:00").do(main)
+
+    schedule.every().friday.at("06:00").do(main)
+    schedule.every().friday.at("10:00").do(main)
+    schedule.every().friday.at("14:00").do(main)
+    schedule.every().friday.at("20:00").do(main)
+
+    schedule.every().saturday.at("06:00").do(main)
+    schedule.every().saturday.at("10:00").do(main)
+    schedule.every().saturday.at("14:00").do(main)
+    schedule.every().saturday.at("20:00").do(main)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+    # main()

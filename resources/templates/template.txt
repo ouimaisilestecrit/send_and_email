@@ -1,6 +1,9 @@
-Salut ${PERSON_NAME},
+${LOTS}
 
-Tu trouveras ci-dessous les principales informations, depuis ma dernière notification, sur les programmes immobiliers d'Altarea Partenaires ! pour la région Ile-de-France :
+Bonjour,
+
+Vous trouverez ci-dessous les principales informations, depuis la dernière notification, sur les programmes immobiliers d'Altarea Partenaires ! pour la région Ile-de-France :
+
 
 ${MAIN_INFO}
 Pour les consulter sur le site: https://altarea-partenaires.com/accueil/
@@ -8,7 +11,7 @@ Pour les consulter sur le site: https://altarea-partenaires.com/accueil/
 
 L'heure indiquée, dans l'objet de ce mail, n'indique que le moment d'envoi du mail et non pas celui de la capture.
 
-Bien à toi,
+Bien à vous,
 
 
 Cet e-mail vous a été envoyé automatiquement, merci de ne pas y répondre.

@@ -1,16 +1,17 @@
-Salut ${PERSON_NAME},
+Bonjour,
 
-Le site est soit momentanément indisponible (https://altarea-partenaires.com/accueil/) ou tes identifiants n'ont pas pu être autorisés pour accéder au contenu du site.
-Il est donc impossible à cet instant de te tenir informé sur les ventes d'Altarea Partenaires pour le moment.
+Le site est soit momentanément indisponible (https://altarea-partenaires.com/accueil/) ou vos identifiants n'ont pas pu être autorisés pour accéder au contenu du site.
+Il est donc impossible à cet instant de vous tenir informés sur les ventes d'Altarea Partenaires pour le moment.
 
 Plusieurs causes peuvent être à l'origine de cette interruption :
 - vos identifiants ont-ils été renouvelés ?
 - le serveur du site n'est peut-être plus opérationnel.
 - l'accès au site est restreint pour cause de maintenance technique.
 
-Si le problème persiste, contacter l'administrateur du site.
+Si le problème persiste, veuillez contacter l'administrateur du site.
 
-Bien à toi,
+Bien à vous,
+
 
 Cet e-mail vous a été envoyé automatiquement, merci de ne pas y répondre.
 
