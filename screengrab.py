@@ -4,10 +4,9 @@ import imghdr
 import locale
 import logging
 import os
-import pickle
-import schedule
 import smtplib
 import sys
+import tempfile
 import time
 import traceback
 from collections import OrderedDict
@@ -17,43 +16,44 @@ from functools import reduce, wraps
 from string import Template
 
 try:
+    import pickle
+    import schedule
+
     from selenium import webdriver
     from selenium.webdriver.common.by import By
     from selenium.webdriver.common.action_chains import ActionChains
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.remote.webelement import WebElement
     from selenium.webdriver.support import expected_conditions as EC
-
     from shutil import move, Error
 
 except ModuleNotFoundError as e:
     print("Some Modules are missing: {}".format(e))
 
+# paths
 DIRNAME = os.path.dirname(__file__)
 BIN_DIR = os.path.normpath(os.path.join(DIRNAME, 'bin'))
-RESOURCES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources'))
 CONF_DIR = os.path.normpath(os.path.join(DIRNAME, 'conf'))
-TEMPLATES_DIR = os.path.normpath(os.path.join(RESOURCES_DIR, 'templates'))
-IMAGES_DIR = os.path.normpath(os.path.join(RESOURCES_DIR, 'images'))
-MAIL_DIR = os.path.normpath(os.path.join(IMAGES_DIR, 'mail'))
-TEMP_DIR = os.path.normpath(os.path.join(IMAGES_DIR, 'temp'))
+RESOURCES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources'))
+
 # filenames
-RESOURCES_FILENAME = 'resources.inf'
+CONFIG_FILENAME = "default.inf"
 PICKLE_FILENAME = "programs.pickle"
-RECEIVERS_FILENAME = 'destinataires.txt'
-MAIN_TEMPLATE_FILENAME = 'template.txt'
-NO_PICTURE_TEMPLATE_FILENAME = 'template_no_picture.txt'
-NOT_AVAILABLE_TEMPLATE_FILENAME = 'template_not_available.txt'
+RECEIVERS_FILENAME = "users_info.inf"
+MAIN_TEMPLATE_FILENAME = "template.txt"
+NO_PICTURE_TEMPLATE_FILENAME = "template_no_picture.txt"
+NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.txt"
+
 # files
 PICKLE_FILE = os.path.normpath(os.path.join(BIN_DIR, PICKLE_FILENAME))
-RESOURCES_FILE = os.path.normpath(os.path.join(BIN_DIR, RESOURCES_FILENAME))
+CONFIG_FILE = os.path.normpath(os.path.join(CONF_DIR, CONFIG_FILENAME))
 RECEIVERS_FILE = os.path.normpath(os.path.join(CONF_DIR, RECEIVERS_FILENAME))
 MAIN_TEMPLATE_FILE = os.path.normpath(
-    os.path.join(TEMPLATES_DIR, MAIN_TEMPLATE_FILENAME))
+    os.path.join(RESOURCES_DIR, MAIN_TEMPLATE_FILENAME))
 NO_PICTURE_TEMPLATE_FILE = os.path.normpath(
-    os.path.join(TEMPLATES_DIR, NO_PICTURE_TEMPLATE_FILENAME))
+    os.path.join(RESOURCES_DIR, NO_PICTURE_TEMPLATE_FILENAME))
 NOT_AVAILABLE_TEMPLATE_FILE = os.path.normpath(
-    os.path.join(TEMPLATES_DIR, NOT_AVAILABLE_TEMPLATE_FILENAME))
+    os.path.join(RESOURCES_DIR, NOT_AVAILABLE_TEMPLATE_FILENAME))
 
 # email credentials
 MAIL_LOGIN = os.environ['EDN_LOGIN']
@@ -74,11 +74,11 @@ ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
 ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
-MAX_FILE_SIZE = 157286400//15  #  (157286400/15) / 1e6 = 10,48 Mo
+MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
 
 # separators
-MAIN_SEP = '='  #  equal sign for main information
-WORD_SEP = '_'  #  underscore for word's separator
+MAIN_SEP = '='  # equal sign for main information
+WORD_SEP = '_'  # underscore for word's separator
 
 # template dictionary of file's message and subjects
 TEMPLATE_DICT = OrderedDict([
@@ -125,222 +125,7 @@ def with_logging(func):
     return wrapper
 
 
-def sub_format(size, sub):
-    """Return the appropiate subject's message."""
-    if size == 1:
-        return sub[0].format(size)
-    if size == 2:
-        return sub[1].format(size)
-    if 2 < size <= 5:
-        return sub[2].format(size)
-    if size > 5:
-        return sub[3].format(size)
-    return "Au-dessus c'est le soleil..."
-
-
-def elapsed_time(duration):
-    """Return the human readable elapsed time."""
-    duration = int(duration)
-    minutes, seconds = divmod(duration, 60)
-    hours, minutes = divmod(minutes, 60)
-
-    hours = str(hours).zfill(2)
-    minutes = str(minutes).zfill(2)
-    seconds = str(seconds).zfill(2)
-
-    if hours != "00":
-        ret = "{}:{}:{}".format(hours, minutes, seconds)
-    else:
-        ret = "{}:{}".format(minutes, seconds)
-
-    return ret
-
-
-def get_emails(filename):
-    """Read emails adresses.
-
-    Function to read the contacts from a given contact file
-    and return a list of email adresses.
-    """
-    emails = set()
-    with open(filename, 'r', encoding='utf-8') as emails_file:
-        for an_email in emails_file:
-            an_email = an_email.strip()
-            an_email = an_email.split()[1]
-            emails.add(an_email)
-    return emails
-
-
-def read_template(filename):
-    """Read template.
-
-    Function to read the template from a given template file
-    and return it.
-    """
-    with open(filename, 'r', encoding='utf-8') as template_file:
-        template_file_content = template_file.read()
-    return Template(template_file_content)
-
-
-def stringify_main_info(lst):
-    """Convert list of a program's main information as a string."""
-    tab = []
-    for i, item_filename in enumerate(sorted(lst)):
-        item = item_filename.split(IMG_FILE_EXTENSION)[0]
-        item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
-        tab.append('{line}. {name} - {city} : {size}'.format(
-            **{'line': str(i+1).rjust(2),
-               'name': item[0],
-               'city': item[1],
-               'size': item[2]}))
-    return ''.join(['{}\n\n'.format(i) for i in tab])
-
-
-def check_size():
-    """Return the size limit of an email message."""
-    smtp = smtplib.SMTP(MAILBOX_HOST)
-    smtp.ehlo()
-    max_limit_in_bytes = int(smtp.esmtp_features['size'])
-    return max_limit_in_bytes
-
-
-def get_list_size(lst):
-    """Return the size of files in bytes."""
-    list_of_length = [os.path.getsize(i) for i in lst]
-    ret = reduce(lambda x, y: x + y, list_of_length)
-    return ret
-
-
-def share_by_lots(folder):
-    """Share by lots."""
-    ret = []
-    tab = []
-    path = os.path.abspath(folder)
-    for item in os.listdir(folder):
-        tab.append(item)
-        length = get_list_size([os.path.join(path, i) for i in tab])
-        while length > MAX_FILE_SIZE:  # 157 286 400 bytes
-            ret.append(tab)
-            tab = []
-            break
-    ret.append(tab)
-    return ret
-
-
-def send_mail(filename, sub, size=None, folder=MAIL_DIR):
-    """Send email with attachments."""
-    # read template
-    a_template = read_template(filename)
-
-    # set timecode on email's subject
-    locale.setlocale(locale.LC_TIME, "fr_FR")
-    subject = "{at} : {sub}".format(
-        **{'at': dt.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
-           'sub': sub if size is None else sub_format(size, sub)})
-
-    # Create the container email message.
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = MAIL_LOGIN
-    msg['To'] = ', '.join(get_emails(RECEIVERS_FILE))
-    msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
-
-    # detect kind of message to process allowing to size
-    if not isinstance(size, type(None)):
-        logger.info("Traitement de message avec %d pièce(s) jointe(s)", size)
-        path_ = os.path.abspath(folder)
-        files = os.listdir(folder)
-
-        # determine files' size
-        current_size = get_list_size([os.path.join(path_, i) for i in files])
-        logger.info("Taille de fichier(s) d'envoi(s) : %s",
-                    "{0:.2f} Mo".format(round(current_size/1000000, 2)))
-        if current_size > MAX_FILE_SIZE:
-            lots = share_by_lots(folder)
-            logger.info("Traitement de message par %d envois", len(lots))
-            for i, a_lot in enumerate(lots):
-                flag = add_flag(i+1, len(lots))
-                msg.replace_header('Subject', "{} - {}".format(subject, flag))
-                message_with_attachments(msg, path_, a_lot, a_template, flag)
-
-                # refresh because we cannot add attachment on
-                # multipart content-type or on non-empty payload
-                msg.replace_header('Content-Type', 'text/plain')
-                msg.set_payload(None)
-        else:
-            message_with_attachments(msg, path_, files, a_template)
-    else:
-        logger.info("Traitement de message sans pièce jointe")
-        message_without_attachment(msg, a_template)
-
-
-def add_flag(index, length):
-    """Add current flag."""
-    return "Envoi : {index} sur {length}".format(
-        **{'index': index, 'length': length})
-
-
-def message_with_attachments(msg, path_, files, a_template, lots=str()):
-    """Prepare message with an attachment."""
-    # feed the email with programs's main information
-    string = stringify_main_info(files)
-    message = Template(a_template.safe_substitute(MAIN_INFO=string.title()))
-    message = message.substitute(LOTS=lots)
-
-    # add in the message body
-    msg.set_content(message)
-
-    # attach files to message
-    msg = add_attach(msg, [os.path.join(path_, i) for i in files])
-    send(msg)
-
-
-def message_without_attachment(msg, a_template):
-    """Prepare message without any attachment."""
-    # add in the message body
-    msg.set_content(a_template.safe_substitute())
-
-    # send the email
-    send(msg)
-
-
-def add_attach(msg, filenames):
-    """Attach files in binary mode."""
-    logger.info("Ajout de « %d fichier(s) »", len(filenames))
-    for filename in filenames:
-        with open(filename, 'rb') as fp:
-            img_data = fp.read()
-        msg.add_attachment(img_data, maintype='image',
-                           subtype=imghdr.what(None, img_data))
-    return msg
-
-
-def send(msg):
-    """Send the email via our own SMTP server."""
-    # Terminate the SMTP session and close the connection
-    with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
-        # enable security
-        s.starttls()
-        # login with email credential
-        s.login(MAIL_LOGIN, MAIL_PASSW)
-        s.send_message(msg)
-    del msg
-
-
-def wait_loading(drv):
-    """Wait while new page is loading."""
-    logger.info("Attente de chargement de la page")
-    wait_time = 0
-    while drv.execute_script('return document.readyState;') != 'complete' \
-      and wait_time < 10:
-        # Scroll down to bottom to load contents, unnecessary for everyone
-        drv.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        wait_time += 0.1
-        time.sleep(0.1)
-    logger.info("Chargement de la page terminé")
-
-
-def grab():
+def grab(tmp):
     """Grab screenshots."""
     state = False
     # set up the driver
@@ -360,21 +145,16 @@ def grab():
         # handle the modal element
         locator = r"//*[@id='first_sign-in_modal']/div/div/div[1]/button"
         handle_modal(driver, locator)
-        # sys.exit()
+
         # search by region of concern
         logger.info("Lancement de la recherche par critères")
         select_idf_region(driver)
 
-        # initialise folder
-        logger.info("Suppression des fichiers du répertoire : %s",
-                    os.path.basename(TEMP_DIR))
-        clear_files(TEMP_DIR)
-
         # collect data
         programs_element = driver.find_element_by_id('results-prog')
         number_programs = int(programs_element.get_attribute('data-count'))
-        get_program_data(driver, number_programs)
-        num = len(os.listdir(TEMP_DIR))  # nombre des photos sauvegardées
+        get_program_data(driver, number_programs, tmp)
+        num = len(os.listdir(tmp))  # nombre des photos sauvegardées
         if num == number_programs:
             logger.info("Toutes les photos des programmes sont sauvegardées")
             state = True
@@ -393,44 +173,31 @@ def grab():
     return state
 
 
-def get_by_id(driver, locator):
-    """Return an element from its id locator."""
-    try:
-        element = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.ID, locator)))
-        if not isinstance(element, WebElement):
-            return None
-        return element
-    except:
-        logger.error("An error occurred when selecting from: %s", locator)
-        return None
-
-
-def get_by_xpath(driver, locator):
-    """Return an element from its xpath locator."""
-    try:
-        element = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.XPATH, locator)))
-        if not isinstance(element, WebElement):
-            return None
-        return element
-    except:
-        logger.error("An error occurred when selecting from: %s", locator)
-        return None
-
-
 def chrome_driver(executable_path, t=10):
     """Return chrome driver."""
     try:
         logger.info("Ouverture du navigateur automatisé : %s", executable_path)
         driver = webdriver.Chrome(executable_path)
-        driver.maximize_window()
-    except Exception:
-        str = traceback.format_exc()
-        looger.error("%s", str)
-    else:
         driver.implicitly_wait(int(t))
+    except Exception:
+        string = traceback.format_exc()
+        logger.error("%s", string)
+    else:
+        driver.maximize_window()
         return driver
+
+
+def wait_loading(drv):
+    """Wait while new page is loading."""
+    logger.info("Attente de chargement de la page")
+    wait_time = 0
+    while drv.execute_script('return document.readyState;') != 'complete' \
+            and wait_time < 10:
+        # Scroll down to bottom to load contents, unnecessary for everyone
+        drv.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        wait_time += 0.1
+        time.sleep(0.1)
+    logger.info("Chargement de la page terminé")
 
 
 def connect(driver, t=1):
@@ -450,6 +217,19 @@ def connect(driver, t=1):
         return False
     else:
         return True
+
+
+def get_by_xpath(driver, locator):
+    """Return an element from its xpath locator."""
+    try:
+        element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, locator)))
+        if not isinstance(element, WebElement):
+            return None
+        return element
+    except:
+        logger.error("An error occurred when selecting from: %s", locator)
+        return None
 
 
 def sign_in(driver, t=1):
@@ -472,6 +252,19 @@ def sign_in(driver, t=1):
         return False
     else:
         return True
+
+
+def get_by_id(driver, locator):
+    """Return an element from its id locator."""
+    try:
+        element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, locator)))
+        if not isinstance(element, WebElement):
+            return None
+        return element
+    except:
+        logger.error("An error occurred when selecting from: %s", locator)
+        return None
 
 
 def wait_signing_in(driver):
@@ -527,7 +320,7 @@ def select_idf_region(driver):
     time.sleep(3)
 
 
-def get_program_data(driver, all_programs):
+def get_program_data(driver, all_programs, folder):
     """Get program data."""
     logger.info("Quantité des programmes immobiliers : %d\n", all_programs)
     pages = number_of_page(all_programs, PROGRAMS_PER_PAGE)
@@ -536,7 +329,8 @@ def get_program_data(driver, all_programs):
     for page in range(pages):
         programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
         for i, a_program in enumerate(programs):
-            fetch_main_data(driver, a_program, i+1, page+1, pages)
+            logger.info("Page %d sur %d", page+1, pages)
+            fetch_main_data(driver, a_program, i+1, folder)
         logger.info("Fin des programmes de la page : %d\n", page+1)
 
         # avoid to click next button on the last page
@@ -544,24 +338,6 @@ def get_program_data(driver, all_programs):
             logger.info("Aller à la page %d", page+2)
             driver.find_element_by_class_name('next').click()
             wait_next_page(driver, page+2)
-
-
-def wait_next_page(driver, page, t=1):
-    """Wait while next page is loading."""
-    next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
-    logger.info("Url : %s", next_url.format(page))
-    while True:
-        if driver.current_url == next_url.format(page):
-            break
-        time.sleep(int(t))
-
-
-def get_text(driver, locator):
-    """Return text if available."""
-    try:
-        return driver.find_element_by_class_name(locator).text
-    except:
-        return "Peut-être le dernier logement disponible"
 
 
 def number_of_page(ele, per_page):
@@ -573,20 +349,16 @@ def number_of_page(ele, per_page):
     return num
 
 
-def fetch_main_data(driver, program, index, page, pages):
+def fetch_main_data(driver, program, index, folder):
     """Fetch main program data."""
-    logger.info("Page %d sur %d", page, pages)
     logger.info("Programme %d", index)
 
-    # residence
     residence_name = get_text(program, r'font-regular')
     logger.info("Résidence : %s", residence_name)
 
-    # city
     commune_name = get_text(program, r'font-bold')
     logger.info("Commune : %s", commune_name)
 
-    # available home
     nb_logement = get_text(program, r'highlight-keys')
     long_nb_logement = ' '.join(nb_logement.split('\n'))
     logger.info("Nb logement dispo : %s", long_nb_logement)
@@ -601,7 +373,7 @@ def fetch_main_data(driver, program, index, page, pages):
     # save screenshot with its appropiate filename
     filename = os.path.normpath(
         os.path.join(
-            TEMP_DIR, "{name}{main}{city}{main}{size}.png".format(
+            folder, "{name}{main}{city}{main}{size}.png".format(
                 **{'name': WORD_SEP.join(residence_name.split()),
                    'main': MAIN_SEP,
                    'city': WORD_SEP.join(commune_name.split()),
@@ -613,59 +385,91 @@ def fetch_main_data(driver, program, index, page, pages):
     logger.info("Fin du programme \n")
 
 
-def clear_files(folder=MAIL_DIR):
-    """Clear files."""
-    for ele in os.listdir(folder):
-        try:
-            os.remove(os.path.normpath(os.path.join(folder, ele)))
-        except FileNotFoundError:
-            pass
-
-
-def send_direct_email():
-    """Send an email if site not available."""
-    state = False
-    # set up the driver
-    driver = chrome_driver(EXECUTABLE_PATH)
+def get_text(driver, locator):
+    """Return text if available."""
     try:
-        # go to website of concern
-        driver.get(ALTAREA_URL)
-        wait_loading(driver)
-        logger.info("Chargement de la page d'accueil : %s", driver.title)
-
-        # open your session
-        if not connect(driver, 3):
-            if driver.current_url == ERR_URL:
-                driver.quit()
-                send_mail(*TEMPLATE_DICT[2])
-                state = True
-            else:
-                # if acces to website then relaunch grab function
-                grabbed = grab()
-                if grabbed:
-                    dispatch()
-
-    except Exception as ex:
-        logger.error("Un problème est survenu : %s", ex)
-        return None
-
-    finally:
-        driver.quit()
-
-    return state
+        return driver.find_element_by_class_name(locator).text
+    except:
+        return "Peut-être le dernier logement disponible"
 
 
-def move_file(filename, dirpath=TEMP_DIR, dst_path=MAIL_DIR):
-    """Move the file to a directory."""
-    try:
-        src_path = str(
-            os.path.normpath(os.path.join(dirpath,
-                                          os.path.basename(filename))))
-        move(src_path, dst_path)
-    except FileNotFoundError as fnfe:
-        logger.error("Le fichier n'existe pas ou a été déplacé : %s", fnfe)
-    except Error as err:
-        logger.error("Ce titre existe déjà : %s", err)
+def wait_next_page(driver, page, t=1):
+    """Wait while next page is loading."""
+    next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
+    logger.info("Url : %s", next_url.format(page))
+    while True:
+        if driver.current_url == next_url.format(page):
+            break
+        time.sleep(int(t))
+
+
+def save_fileconfig(folder):
+    """Save configuration file."""
+    logger.info("Sauvegarde de la configuration")
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        for item in os.listdir(folder):
+            f.write('{}\n'.format(item))
+
+
+def dispatch(tmp, box):
+    """Diagnose programs."""
+    if not os.path.exists(PICKLE_FILE):
+        # create a pickle file
+        previous_set = read_fileconfig()
+        dump_to_pickle(PICKLE_FILE, previous_set)
+
+    # load programs from pickle file saved
+    former = load_from_pickle(PICKLE_FILE)
+    stream = get_streams(tmp)
+
+    # comparison
+    program = find_program(former, stream)
+    if isinstance(program, type(None)):
+        logger.info("Aucun changement, pas d'envoi de courriel")
+        # logger.info("Aucun changement, envoi du courriel approprié")
+        # send_mail(*TEMPLATE_DICT[1], box)
+
+        # sync with the last update
+        older = former - stream
+        if older:
+            logger.info("Synchronisation avec la dernière mise à jour")
+            dump_to_pickle(PICKLE_FILE, stream)
+    else:
+        logger.info("Analyse de(s) programme(s) mis à jour")
+        # step 1 - updated program
+        updated = stream - former
+        logger.info("« %d » programme(s) mis à jour", len(updated))
+
+        # step 2 - sync with the last update
+        logger.info("Synchronisation avec la dernière mise à jour")
+        dump_to_pickle(PICKLE_FILE, stream)
+
+        # step 3 - moving updated program from temp to mail directory
+        logger.info("Envoi de(s) programme(s) vers le répertoire mail")
+        for an_update in updated:
+            move_file(an_update, tmp, box)
+
+        # step 4 - send email
+        if box:
+            logger.info("Envoi de mail")
+            len_img_mail = len(os.listdir(box))
+            send_mail(*TEMPLATE_DICT[0], box, len_img_mail)
+            logger.info("Mail envoyé")
+        else:
+            logger.info("Aucun changement, pas d'envoi de courriel")
+            # logger.info("Aucun changement, envoi du courriel approprié")
+            # send_mail(*TEMPLATE_DICT[1], box)
+    return True
+
+
+def read_fileconfig():
+    """Read configuration file."""
+    ret = set()
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as lines:
+        for line in lines:
+            line = line.strip()
+            ret.add(line)
+    return ret
 
 
 def dump_to_pickle(filename, content):
@@ -678,24 +482,6 @@ def load_from_pickle(filename):
     """Load from pickle file."""
     with open(filename, "rb") as pickle_f:
         return pickle.load(pickle_f)
-
-
-def read_fileconfig():
-    """Read configuration file."""
-    ret = set()
-    with open(RESOURCES_FILE, 'r', encoding='utf-8') as lines:
-        for line in lines:
-            line = line.strip()
-            ret.add(line)
-    return ret
-
-
-def save_fileconfig():
-    """Save configuration file."""
-    logger.info("Sauvegarde de la configuration")
-    with open(RESOURCES_FILE, 'w', encoding='utf-8') as f:
-        for item in os.listdir(TEMP_DIR):
-            f.write('{}\n'.format(item))
 
 
 def get_streams(folder):
@@ -720,75 +506,276 @@ def find_program(former, stream):
         return val
 
 
-def dispatch():
-    """Diagnose programs."""
-    if not os.path.exists(PICKLE_FILE):
-        # create a pickle file
-        previous_set = read_fileconfig()
-        dump_to_pickle(PICKLE_FILE, previous_set)
+def send_mail(filename, sub, folder, size=None):
+    """Send email with attachments."""
+    # read template
+    a_template = read_template(filename)
 
-    # load programs from pickle file saved
-    former = load_from_pickle(PICKLE_FILE)
-    stream = get_streams(TEMP_DIR)
+    # set timecode on email's subject
+    locale.setlocale(locale.LC_TIME, "fr_FR")
+    subject = "{at} : {sub}".format(
+        **{'at': dt.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
+           'sub': sub if size is None else sub_format(size, sub)})
 
-    # comparison
-    program = find_program(former, stream)
-    if isinstance(program, type(None)):
-        logger.info("Aucun changement, envoi du courriel approprié")
-        clear_files()
-        send_mail(*TEMPLATE_DICT[1])
+    # Create the container email message.
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = MAIL_LOGIN
+    msg['To'] = ', '.join(get_emails(RECEIVERS_FILE))
+    msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
 
-        # sync with the last update
-        older = former - stream
-        if older:
-            logger.info("Synchronisation avec la dernière mise à jour")
-            dump_to_pickle(PICKLE_FILE, stream)
-    else:
-        logger.info("Analyse de(s) programme(s) mis à jour")
-        # step 1 - updated program
-        updated = stream - former
-        logger.info("« %d » programme(s) mis à jour", len(updated))
+    # detect kind of message to process allowing to size
+    if not isinstance(size, type(None)):
+        logger.info("Traitement de message avec %d pièce(s) jointe(s)", size)
+        path_ = os.path.abspath(folder)
+        files = os.listdir(folder)
 
-        # step 2 - sync with the last update
-        logger.info("Synchronisation avec la dernière mise à jour")
-        dump_to_pickle(PICKLE_FILE, stream)
+        # determine files' size
+        current_size = get_list_size([os.path.join(path_, i) for i in files])
+        logger.info("Taille de fichier(s) d'envoi(s) : %s",
+                    "{0:.2f} Mo".format(round(current_size/1000000, 2)))
+        if current_size > MAX_FILE_SIZE:
+            lots = share_by_lots(folder)
+            logger.info("Traitement de message par %d envois", len(lots))
+            for i, a_lot in enumerate(lots):
+                flag = add_flag(i+1, len(lots))
+                msg.replace_header('Subject', "{} - {}".format(subject, flag))
+                message_with_attachments(msg, path_, a_lot, a_template, flag)
 
-        # step 3 - Deleting files from the mail directory
-        logger.info("Suppression des fichiers du répertoire mail")
-        clear_files()
-
-        # step 4 - moving updated program from temp to mail directory
-        logger.info("Envoi de(s) programme(s) vers le répertoire mail")
-        for an_update in updated:
-            move_file(an_update)
-
-        # step 5 - send email
-        if MAIL_DIR:
-            logger.info("Envoi de mail")
-            len_img_mail = len(os.listdir(MAIL_DIR))
-            send_mail(*TEMPLATE_DICT[0], len_img_mail)
-            logger.info("Mail envoyé")
+                # refresh because we cannot add attachment on
+                # multipart content-type or on non-empty payload
+                msg.replace_header('Content-Type', 'text/plain')
+                msg.set_payload(None)
         else:
-            logger.info("Aucun changement, envoi du courriel approprié")
-            send_mail(*TEMPLATE_DICT[1])
-    return True
+            message_with_attachments(msg, path_, files, a_template)
+    else:
+        logger.info("Traitement de message sans pièce jointe")
+        message_without_attachment(msg, a_template)
+
+
+def read_template(filename):
+    """Read template.
+
+    Function to read the template from a given template file
+    and return it.
+    """
+    with open(filename, 'r', encoding='utf-8') as template_file:
+        template_file_content = template_file.read()
+    return Template(template_file_content)
+
+
+def sub_format(size, sub):
+    """Return the appropiate subject's message."""
+    if size == 1:
+        return sub[0].format(size)
+    if size == 2:
+        return sub[1].format(size)
+    if 2 < size <= 5:
+        return sub[2].format(size)
+    if size > 5:
+        return sub[3].format(size)
+    return "NaN"
+
+
+def get_emails(filename):
+    """Read emails adresses.
+
+    Function to read the contacts from a given contact file
+    and return a list of email adresses.
+    """
+    emails = set()
+    with open(filename, 'r', encoding='utf-8') as emails_file:
+        for an_email in emails_file:
+            an_email = an_email.strip()
+            an_email = an_email.split(MAIN_SEP)[1]
+            emails.add(an_email)
+    return emails
+
+
+def get_list_size(lst):
+    """Return the size of files in bytes."""
+    list_of_length = [os.path.getsize(i) for i in lst]
+    ret = reduce(lambda x, y: x + y, list_of_length)
+    return ret
+
+
+def share_by_lots(folder):
+    """Share by lots."""
+    ret = []
+    tab = []
+    path = os.path.abspath(folder)
+    for item in os.listdir(folder):
+        tab.append(item)
+        length = get_list_size([os.path.join(path, i) for i in tab])
+        while length > MAX_FILE_SIZE:  # 157 286 400 bytes
+            ret.append(tab)
+            tab = []
+            break
+    ret.append(tab)
+    return ret
+
+
+def add_flag(index, length):
+    """Add current flag."""
+    return "Envoi : {index} sur {length}".format(
+        **{'index': index, 'length': length})
+
+
+def message_with_attachments(msg, path_, files, a_template, lots=str()):
+    """Prepare message with an attachment."""
+    # feed the email with programs's main information
+    string = stringify_main_info(files)
+    message = Template(a_template.safe_substitute(MAIN_INFO=string.title()))
+    message = message.substitute(LOTS=lots)
+
+    # add in the message body
+    msg.set_content(message)
+
+    # attach files to message
+    msg = add_attach(msg, [os.path.join(path_, i) for i in files])
+    send(msg)
+
+
+def stringify_main_info(lst):
+    """Convert list of a program's main information as a string."""
+    tab = []
+    for i, item_filename in enumerate(sorted(lst)):
+        item = item_filename.split(IMG_FILE_EXTENSION)[0]
+        item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
+        tab.append('{line}. {name} - {city} : {size}'.format(
+            **{'line': str(i+1).rjust(2),
+               'name': item[0],
+               'city': item[1],
+               'size': item[2]}))
+    return ''.join(['{}\n\n'.format(i) for i in tab])
+
+
+def add_attach(msg, filenames):
+    """Attach files in binary mode."""
+    logger.info("Ajout de « %d fichier(s) »", len(filenames))
+    for filename in filenames:
+        with open(filename, 'rb') as fp:
+            img_data = fp.read()
+        msg.add_attachment(img_data, maintype='image',
+                           subtype=imghdr.what(None, img_data))
+    return msg
+
+
+def send(msg):
+    """Send the email via our own SMTP server."""
+    # Terminate the SMTP session and close the connection
+    with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
+        # enable security
+        s.starttls()
+        # login with email credential
+        s.login(MAIL_LOGIN, MAIL_PASSW)
+        s.send_message(msg)
+    del msg
+
+
+def message_without_attachment(msg, a_template):
+    """Prepare message without any attachment."""
+    # add in the message body
+    msg.set_content(a_template.safe_substitute())
+    # send the email
+    send(msg)
+
+
+def move_file(item, dirpath, dst_path):
+    """Move the file to a directory."""
+    try:
+        src_path = str(
+            os.path.normpath(os.path.join(dirpath,
+                                          os.path.basename(item))))
+        move(src_path, dst_path)
+    except FileNotFoundError as fnfe:
+        logger.error("Le fichier n'existe pas ou a été déplacé : %s", fnfe)
+    except Error as err:
+        logger.error("Ce titre existe déjà : %s", err)
+
+
+def send_direct_email(tmp, box):
+    """Send an email if site not available."""
+    state = False
+    # set up the driver
+    driver = chrome_driver(EXECUTABLE_PATH)
+    try:
+        # go to website of concern
+        driver.get(ALTAREA_URL)
+        wait_loading(driver)
+        logger.info("Chargement de la page d'accueil : %s", driver.title)
+
+        # open your session
+        if not connect(driver, 3):
+            if driver.current_url == ERR_URL:
+                driver.quit()
+                send_mail(*TEMPLATE_DICT[2], box)
+                state = True
+            else:
+                # if acces to website then relaunch grab function
+                grabbed = grab(tmp)
+                if grabbed:
+                    dispatch(tmp, box)
+        else:
+            logger.info("La cause du problème n'est pas l'accès au site")
+
+    except Exception as ex:
+        logger.error("Un problème est survenu : %s", ex)
+        return None
+
+    finally:
+        driver.quit()
+
+    return state
+
+
+def elapsed_time(duration):
+    """Return the human readable elapsed time."""
+    duration = int(duration)
+    minutes, seconds = divmod(duration, 60)
+    hours, minutes = divmod(minutes, 60)
+
+    hours = str(hours).zfill(2)
+    minutes = str(minutes).zfill(2)
+    seconds = str(seconds).zfill(2)
+
+    if hours != "00":
+        ret = "{}:{}:{}".format(hours, minutes, seconds)
+    else:
+        ret = "{}:{}".format(minutes, seconds)
+
+    return ret
+
+
+def check_size():
+    """Return the size limit of an email message."""
+    smtp = smtplib.SMTP(MAILBOX_HOST)
+    smtp.ehlo()
+    max_limit_in_bytes = int(smtp.esmtp_features['size'])
+    return max_limit_in_bytes
+
 
 @with_logging
 def main():
     """Process the capture of pictures."""
+    start = time.time()
     try:
-        start = time.time()
         logger.info("Lancement du processus")
+        # create temporary directory
+        box_dir = tempfile.TemporaryDirectory(dir=RESOURCES_DIR)
+        box = box_dir.name
+        tmp_dir = tempfile.TemporaryDirectory(dir=RESOURCES_DIR)
+        tmp = tmp_dir.name
 
-        nb_retries = 3  # number of attempts allowed after any failures
+        nb_retries = 4  # number of attempts allowed after any failures
         while nb_retries > 0:
             logger.info("Nb retries allowed: %d", nb_retries)
             # launch grab & dispatch
             # condition to break while loop
-            grabbed = grab()
+            grabbed = grab(tmp)
             if grabbed:
-                save_fileconfig()
-                dispatched = dispatch()
+                save_fileconfig(tmp)
+                dispatched = dispatch(tmp, box)
                 if dispatched:
                     break
 
@@ -796,7 +783,7 @@ def main():
 
         else:
             # bad network or bad credential
-            if send_direct_email():
+            if send_direct_email(tmp, box):
                 logger.info("La notification d'échec de connexion est envoyée")
 
     except FileNotFoundError as err:
@@ -811,31 +798,38 @@ def main():
 
 
 if __name__ == '__main__':
+    # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
     schedule.every().monday.at("14:00").do(main)
     schedule.every().monday.at("20:00").do(main)
 
+    # tuesday schedule
     schedule.every().tuesday.at("06:00").do(main)
     schedule.every().tuesday.at("10:00").do(main)
     schedule.every().tuesday.at("14:00").do(main)
     schedule.every().tuesday.at("20:00").do(main)
 
+    # wednesday schedule
     schedule.every().wednesday.at("06:00").do(main)
     schedule.every().wednesday.at("10:00").do(main)
     schedule.every().wednesday.at("14:00").do(main)
     schedule.every().wednesday.at("20:00").do(main)
 
+    # thursday schedule
     schedule.every().thursday.at("06:00").do(main)
     schedule.every().thursday.at("10:00").do(main)
     schedule.every().thursday.at("14:00").do(main)
     schedule.every().thursday.at("20:00").do(main)
 
+    # friday schedule
     schedule.every().friday.at("06:00").do(main)
     schedule.every().friday.at("10:00").do(main)
     schedule.every().friday.at("14:00").do(main)
+    schedule.every().friday.at("16:00").do(main)
     schedule.every().friday.at("20:00").do(main)
 
+    # saturday schedule
     schedule.every().saturday.at("06:00").do(main)
     schedule.every().saturday.at("10:00").do(main)
     schedule.every().saturday.at("14:00").do(main)
@@ -844,4 +838,3 @@ if __name__ == '__main__':
     while True:
         schedule.run_pending()
         time.sleep(1)
-    # main()
