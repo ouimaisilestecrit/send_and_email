@@ -15,6 +15,9 @@ from email.message import EmailMessage
 from functools import reduce, wraps
 from string import Template
 
+from pprint import pprint
+from pdb import set_trace
+
 try:
     import pickle
     import schedule
@@ -37,7 +40,7 @@ CONF_DIR = os.path.normpath(os.path.join(DIRNAME, 'conf'))
 RESOURCES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources'))
 
 # filenames
-CONFIG_FILENAME = "default.inf"
+CONFIG_FILENAME = "default_conf.inf"
 PICKLE_FILENAME = "programs.pickle"
 RECEIVERS_FILENAME = "users_info.inf"
 MAIN_TEMPLATE_FILENAME = "template.txt"
@@ -75,6 +78,7 @@ ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
 MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
+BAD_GATEWAY_TIMEOUT = '504'
 
 # separators
 MAIN_SEP = '='  # equal sign for main information
@@ -125,7 +129,7 @@ def with_logging(func):
     return wrapper
 
 
-def grab(tmp):
+def grab(tmp, box):
     """Grab screenshots."""
     state = False
     # set up the driver
@@ -134,6 +138,12 @@ def grab(tmp):
         # go to website of concern
         driver.get(ALTAREA_URL)
         wait_loading(driver)
+        message, code = parse_status_code(driver)
+        if BAD_GATEWAY_TIMEOUT in code:
+            logger.info("Message : %s", message)
+            logger.info("Status code : %s", code)
+            driver.quit()
+            send_mail(*TEMPLATE_DICT[2], box)
         logger.info("Page d'accueil : %s", driver.title)
 
         # open your session
@@ -178,12 +188,12 @@ def chrome_driver(executable_path, t=10):
     try:
         logger.info("Ouverture du navigateur automatisé : %s", executable_path)
         driver = webdriver.Chrome(executable_path)
-        driver.implicitly_wait(int(t))
+        driver.maximize_window()
     except Exception:
         string = traceback.format_exc()
         logger.error("%s", string)
     else:
-        driver.maximize_window()
+        driver.implicitly_wait(int(t))
         return driver
 
 
@@ -198,6 +208,14 @@ def wait_loading(drv):
         wait_time += 0.1
         time.sleep(0.1)
     logger.info("Chargement de la page terminé")
+
+
+def parse_status_code(driver):
+    """Parse HTTP Get response."""
+    resp = driver.get_log('browser')
+    msg = resp[0]['message']
+    code = msg.split()[-2]
+    return msg, code
 
 
 def connect(driver, t=1):
@@ -713,7 +731,7 @@ def send_direct_email(tmp, box):
                 state = True
             else:
                 # if acces to website then relaunch grab function
-                grabbed = grab(tmp)
+                grabbed = grab(tmp, box)
                 if grabbed:
                     dispatch(tmp, box)
         else:
@@ -772,7 +790,7 @@ def main():
             logger.info("Nb retries allowed: %d", nb_retries)
             # launch grab & dispatch
             # condition to break while loop
-            grabbed = grab(tmp)
+            grabbed = grab(tmp, box)
             if grabbed:
                 save_fileconfig(tmp)
                 dispatched = dispatch(tmp, box)
@@ -798,6 +816,7 @@ def main():
 
 
 if __name__ == '__main__':
+    main()
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
@@ -826,7 +845,6 @@ if __name__ == '__main__':
     schedule.every().friday.at("06:00").do(main)
     schedule.every().friday.at("10:00").do(main)
     schedule.every().friday.at("14:00").do(main)
-    schedule.every().friday.at("16:00").do(main)
     schedule.every().friday.at("20:00").do(main)
 
     # saturday schedule
