@@ -21,7 +21,6 @@ from pdb import set_trace
 try:
     import pickle
     import schedule
-
     from selenium import webdriver
     from selenium.webdriver.common.by import By
     from selenium.webdriver.common.action_chains import ActionChains
@@ -134,6 +133,7 @@ def grab(tmp, box):
     state = False
     # set up the driver
     driver = chrome_driver(EXECUTABLE_PATH)
+    check_version(driver)
     try:
         # go to website of concern
         driver.get(ALTAREA_URL)
@@ -166,7 +166,7 @@ def grab(tmp, box):
         get_program_data(driver, number_programs, tmp)
         num = len(os.listdir(tmp))  # nombre des photos sauvegardées
         if num == number_programs:
-            logger.info("Toutes les photos des programmes sont sauvegardées")
+            logger.info("Les %d photos sont sauvegardées", number_programs)
             state = True
         else:
             logger.info("%d photos sur %d sauvegardées", num, number_programs)
@@ -195,6 +195,21 @@ def chrome_driver(executable_path, t=10):
     else:
         driver.implicitly_wait(int(t))
         return driver
+
+
+def check_version(driver):
+    """Check both Chrome browser and ChromeDriver version."""
+    cap = driver.capabilities
+    browser_n = cap['browserName']
+    browser_v = cap['browserVersion']
+    chrome_driver_v = cap[browser_n]['chromedriverVersion'].split()[0]
+    if browser_v.split('.')[0] == chrome_driver_v.split('.')[0]:
+        logger.info("ChromeDriver est à jour")
+    else:
+        logger.error("Veuillez mettre à jour ChromeDriver")
+        logger.info("Version du navigateur : %s", browser_v)
+        logger.info("Version de ChromeDriver : %s", chrome_driver_v)
+        sys.exit("La version de ChromeDriver est obsolète")
 
 
 def wait_loading(drv):
@@ -421,7 +436,7 @@ def wait_next_page(driver, page, t=1):
         time.sleep(int(t))
 
 
-def save_fileconfig(folder):
+def save_config(folder):
     """Save configuration file."""
     logger.info("Sauvegarde de la configuration")
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -433,7 +448,7 @@ def dispatch(tmp, box):
     """Diagnose programs."""
     if not os.path.exists(PICKLE_FILE):
         # create a pickle file
-        previous_set = read_fileconfig()
+        previous_set = read_config()
         dump_to_pickle(PICKLE_FILE, previous_set)
 
     # load programs from pickle file saved
@@ -480,7 +495,7 @@ def dispatch(tmp, box):
     return True
 
 
-def read_fileconfig():
+def read_config():
     """Read configuration file."""
     ret = set()
     with open(CONFIG_FILE, 'r', encoding='utf-8') as lines:
@@ -533,7 +548,7 @@ def send_mail(filename, sub, folder, size=None):
     locale.setlocale(locale.LC_TIME, "fr_FR")
     subject = "{at} : {sub}".format(
         **{'at': dt.today().strftime('%A %d %b %y, %Hh%M').capitalize(),
-           'sub': sub if size is None else sub_format(size, sub)})
+           'sub': sub if size is None else switch_subject(size, sub)})
 
     # Create the container email message.
     msg = EmailMessage()
@@ -582,7 +597,7 @@ def read_template(filename):
     return Template(template_file_content)
 
 
-def sub_format(size, sub):
+def switch_subject(size, sub):
     """Return the appropiate subject's message."""
     if size == 1:
         return sub[0].format(size)
@@ -625,12 +640,21 @@ def share_by_lots(folder):
     for item in os.listdir(folder):
         tab.append(item)
         length = get_list_size([os.path.join(path, i) for i in tab])
-        while length > MAX_FILE_SIZE:  # 157 286 400 bytes
+        while check_size_limit(length, MAX_FILE_SIZE):
             ret.append(tab)
             tab = []
             break
     ret.append(tab)
     return ret
+
+
+def check_size_limit(val1, val2, limit=90):
+    """Compare result to the limit."""
+    rate = round((val1/val2)*100)
+    if rate < limit:
+        return False
+    else:
+        return True
 
 
 def add_flag(index, length):
@@ -792,7 +816,7 @@ def main():
             # condition to break while loop
             grabbed = grab(tmp, box)
             if grabbed:
-                save_fileconfig(tmp)
+                save_config(tmp)
                 dispatched = dispatch(tmp, box)
                 if dispatched:
                     break
@@ -807,6 +831,9 @@ def main():
     except FileNotFoundError as err:
         logger.error("Un problème est survenu : %s", err)
 
+    except SystemExit as sex:
+        logger.error("Un problème est survenu : %s", se)
+
     finally:
         print("\n> Fin du processus")
         logger.info("Fin du processus")
@@ -816,7 +843,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
