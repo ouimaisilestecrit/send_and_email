@@ -133,7 +133,6 @@ def grab(tmp, box):
     state = False
     # set up the driver
     driver = chrome_driver(EXECUTABLE_PATH)
-    check_version(driver)
     try:
         # go to website of concern
         driver.get(ALTAREA_URL)
@@ -144,11 +143,16 @@ def grab(tmp, box):
             logger.info("Status code : %s", code)
             driver.quit()
             send_mail(*TEMPLATE_DICT[2], box)
+            msg = "Alerte ! Problème de connexion sur Altarea Partenaires !"
+            logger.error("%s", msg)
+            print(msg)
+            sys.exit(msg)
         logger.info("Page d'accueil : %s", driver.title)
 
         # open your session
         if not connect(driver):
-            logger.warning("Plusieurs causes peuvent être à l'origine de l'interruption de ce processus")
+            msg = "Plusieurs causes peuvent occasionner cette interruption"
+            logger.warning("%s", msg)
             state = False
             return None
 
@@ -172,8 +176,9 @@ def grab(tmp, box):
             logger.info("%d photos sur %d sauvegardées", num, number_programs)
             state = False
 
-    except Exception as ex:
-        logger.error("Un problème est survenu : %s", ex)
+    except Exception:
+        string = traceback.format_exc()
+        logger.error("Un problème est survenu : %s", string)
         state = False
         return None
 
@@ -185,16 +190,12 @@ def grab(tmp, box):
 
 def chrome_driver(executable_path, t=10):
     """Return chrome driver."""
-    try:
-        logger.info("Ouverture du navigateur automatisé : %s", executable_path)
-        driver = webdriver.Chrome(executable_path)
-        driver.maximize_window()
-    except Exception:
-        string = traceback.format_exc()
-        logger.error("%s", string)
-    else:
-        driver.implicitly_wait(int(t))
-        return driver
+    logger.info("Ouverture du navigateur automatisé : %s", executable_path)
+    driver = webdriver.Chrome(executable_path)
+    check_version(driver)
+    driver.maximize_window()
+    driver.implicitly_wait(int(t))
+    return driver
 
 
 def check_version(driver):
@@ -206,10 +207,16 @@ def check_version(driver):
     if browser_v.split('.')[0] == chrome_driver_v.split('.')[0]:
         logger.info("ChromeDriver est à jour")
     else:
-        logger.error("Veuillez mettre à jour ChromeDriver")
-        logger.info("Version du navigateur : %s", browser_v)
-        logger.info("Version de ChromeDriver : %s", chrome_driver_v)
-        sys.exit("La version de ChromeDriver est obsolète")
+        v_nav = "Version du navigateur"
+        v_drv = "Version de ChromeDriver"
+        err = "Interruption du processus, veuillez mettre à jour ChromeDriver"
+        print("{} : {}".format(v_nav, browser_v))
+        print("{} : {}".format(v_drv, chrome_driver_v))
+        print(err)
+        logger.error("%s : %s", v_nav, browser_v)
+        logger.error("%s : %s", v_drv, chrome_driver_v)
+        logger.error("%s", err)
+        sys.exit(err)
 
 
 def wait_loading(drv):
@@ -227,9 +234,14 @@ def wait_loading(drv):
 
 def parse_status_code(driver):
     """Parse HTTP Get response."""
+    code = ''
+    msg = ''
     resp = driver.get_log('browser')
-    msg = resp[0]['message']
-    code = msg.split()[-2]
+    if resp:
+        logger.info("%s", resp)
+        msg = resp[0]['message']
+        code = msg.split()[-2]
+        return msg, code
     return msg, code
 
 
@@ -245,8 +257,9 @@ def connect(driver, t=1):
             if not sign_in(driver, t):
                 return False
 
-    except Exception as ex:
-        logger.error("Un problème est survenu : %s", ex)
+    except Exception:
+        string = traceback.format_exc()
+        logger.error("Un problème est survenu : %s", string)
         return False
     else:
         return True
@@ -761,8 +774,9 @@ def send_direct_email(tmp, box):
         else:
             logger.info("La cause du problème n'est pas l'accès au site")
 
-    except Exception as ex:
-        logger.error("Un problème est survenu : %s", ex)
+    except Exception:
+        string = traceback.format_exc()
+        logger.error("Un problème est survenu : %s", string)
         return None
 
     finally:
@@ -831,7 +845,7 @@ def main():
     except FileNotFoundError as err:
         logger.error("Un problème est survenu : %s", err)
 
-    except SystemExit as sex:
+    except SystemExit as se:
         logger.error("Un problème est survenu : %s", se)
 
     finally:
@@ -843,7 +857,7 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
+    main()
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
