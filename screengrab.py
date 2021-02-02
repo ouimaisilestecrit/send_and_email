@@ -107,7 +107,7 @@ LOG_PATH = os.path.normpath(os.path.join(DIRNAME, "log"))
 LOG_FORMAT = "[%(asctime)s - %(name)s] - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
 LOG_EXT = ".log"
 LOG_FILE = os.path.join(
-    LOG_PATH, "{script}_ALTAREA{ext}".format(
+    LOG_PATH, "{script}{ext}".format(
         **{'script': os.path.basename(sys.argv[0].split('.')[0]),
            'ext': LOG_EXT}))
 logging.basicConfig(
@@ -144,7 +144,7 @@ def grab(tmp, box):
             driver.quit()
             send_mail(*TEMPLATE_DICT[2], box)
             msg = "Alerte ! Problème de connexion sur Altarea Partenaires !"
-            logger.error("%s", msg)
+            logger.warning("%s", msg)
             print(msg)
             sys.exit(msg)
         logger.info("Page d'accueil : %s", driver.title)
@@ -666,8 +666,7 @@ def check_size_limit(val1, val2, limit=90):
     rate = round((val1/val2)*100)
     if rate < limit:
         return False
-    else:
-        return True
+    return True
 
 
 def add_flag(index, length):
@@ -857,7 +856,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
