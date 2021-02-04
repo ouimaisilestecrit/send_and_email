@@ -32,6 +32,8 @@ try:
 except ModuleNotFoundError as e:
     print("Some Modules are missing: {}".format(e))
 
+LOGGER = logging.getLogger(__name__)
+
 # paths
 DIRNAME = os.path.dirname(__file__)
 BIN_DIR = os.path.normpath(os.path.join(DIRNAME, 'bin'))
@@ -41,7 +43,7 @@ RESOURCES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources'))
 # filenames
 CONFIG_FILENAME = "default_conf.inf"
 PICKLE_FILENAME = "programs.pickle"
-RECEIVERS_FILENAME = "users_info.inf"
+RECEIVERS_FILENAME = "users_info1.inf"
 MAIN_TEMPLATE_FILENAME = "template.txt"
 NO_PICTURE_TEMPLATE_FILENAME = "template_no_picture.txt"
 NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.txt"
@@ -77,7 +79,6 @@ ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
 MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
-BAD_GATEWAY_TIMEOUT = '504'
 
 # separators
 MAIN_SEP = '='  # equal sign for main information
@@ -102,19 +103,20 @@ TEMPLATE_DICT = OrderedDict([
 # WEBDRIVER
 EXECUTABLE_PATH = r"C:\Program Files (x86)\chromedriver.exe"
 
-# LOGGING
-LOG_PATH = os.path.normpath(os.path.join(DIRNAME, "log"))
-LOG_FORMAT = "[%(asctime)s - %(name)s] - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
-LOG_EXT = ".log"
-LOG_FILE = os.path.join(
-    LOG_PATH, "{script}{ext}".format(
-        **{'script': os.path.basename(sys.argv[0].split('.')[0]),
-           'ext': LOG_EXT}))
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format=LOG_FORMAT)
-logger = logging.getLogger()
+
+def init_logger():
+    """create and configure logger."""
+    LOGGER.setLevel(logging.INFO)
+    log_path = os.path.normpath(os.path.join(DIRNAME, "log"))
+    formatter = logging.Formatter(
+        '[%(asctime)s:%(module)s:%(lineno)s:%(levelname)s] %(message)s')
+    log_file = os.path.join(log_path, "{filenam}{log_ext}".format(
+        **{'filenam': os.path.basename(sys.argv[0].split('.')[0]),
+           'log_ext': '.log'}))
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    LOGGER.addHandler(file_handler)
 
 
 def with_logging(func):
@@ -137,22 +139,25 @@ def grab(tmp, box):
         # go to website of concern
         driver.get(ALTAREA_URL)
         wait_loading(driver)
-        message, code = parse_status_code(driver)
-        if BAD_GATEWAY_TIMEOUT in code:
-            logger.info("Message : %s", message)
-            logger.info("Status code : %s", code)
+        level, message = get_status(driver)
+        LOGGER.info("Niveau : %s", level)
+
+        # check if there is a network issue
+        if level == 'SEVERE':
+            msg = ' '.join(message.rsplit(':', 1)[1].split()[:-1])
+            LOGGER.info("%s", msg.capitalize())
             driver.quit()
             send_mail(*TEMPLATE_DICT[2], box)
             msg = "Alerte ! Problème de connexion sur Altarea Partenaires !"
-            logger.warning("%s", msg)
+            LOGGER.warning("%s", msg)
             print(msg)
             sys.exit(msg)
-        logger.info("Page d'accueil : %s", driver.title)
+        LOGGER.info("Page d'accueil : %s", driver.title)
 
         # open your session
         if not connect(driver):
             msg = "Plusieurs causes peuvent occasionner cette interruption"
-            logger.warning("%s", msg)
+            LOGGER.warning("%s", msg)
             state = False
             return None
 
@@ -161,7 +166,7 @@ def grab(tmp, box):
         handle_modal(driver, locator)
 
         # search by region of concern
-        logger.info("Lancement de la recherche par critères")
+        LOGGER.info("Lancement de la recherche par critères")
         select_idf_region(driver)
 
         # collect data
@@ -170,15 +175,15 @@ def grab(tmp, box):
         get_program_data(driver, number_programs, tmp)
         num = len(os.listdir(tmp))  # nombre des photos sauvegardées
         if num == number_programs:
-            logger.info("Les %d photos sont sauvegardées", number_programs)
+            LOGGER.info("Les %d photos sont sauvegardées", number_programs)
             state = True
         else:
-            logger.info("%d photos sur %d sauvegardées", num, number_programs)
+            LOGGER.info("%d photos sur %d sauvegardées", num, number_programs)
             state = False
 
     except Exception:
         string = traceback.format_exc()
-        logger.error("Un problème est survenu : %s", string)
+        LOGGER.error("Un problème est survenu : %s", string)
         state = False
         return None
 
@@ -190,7 +195,7 @@ def grab(tmp, box):
 
 def chrome_driver(executable_path, t=10):
     """Return chrome driver."""
-    logger.info("Ouverture du navigateur automatisé : %s", executable_path)
+    LOGGER.info("Ouverture du navigateur automatisé : %s", executable_path)
     driver = webdriver.Chrome(executable_path)
     check_version(driver)
     driver.maximize_window()
@@ -205,7 +210,7 @@ def check_version(driver):
     browser_v = cap['browserVersion']
     chrome_driver_v = cap[browser_n]['chromedriverVersion'].split()[0]
     if browser_v.split('.')[0] == chrome_driver_v.split('.')[0]:
-        logger.info("ChromeDriver est à jour")
+        LOGGER.info("ChromeDriver est à jour")
     else:
         v_nav = "Version du navigateur"
         v_drv = "Version de ChromeDriver"
@@ -213,15 +218,15 @@ def check_version(driver):
         print("{} : {}".format(v_nav, browser_v))
         print("{} : {}".format(v_drv, chrome_driver_v))
         print(err)
-        logger.error("%s : %s", v_nav, browser_v)
-        logger.error("%s : %s", v_drv, chrome_driver_v)
-        logger.error("%s", err)
+        LOGGER.error("%s : %s", v_nav, browser_v)
+        LOGGER.error("%s : %s", v_drv, chrome_driver_v)
+        LOGGER.error("%s", err)
         sys.exit(err)
 
 
 def wait_loading(drv):
     """Wait while new page is loading."""
-    logger.info("Attente de chargement de la page")
+    LOGGER.info("Attente de chargement de la page")
     wait_time = 0
     while drv.execute_script('return document.readyState;') != 'complete' \
             and wait_time < 10:
@@ -229,20 +234,19 @@ def wait_loading(drv):
         drv.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         wait_time += 0.1
         time.sleep(0.1)
-    logger.info("Chargement de la page terminé")
+    LOGGER.info("Chargement de la page terminé")
 
 
-def parse_status_code(driver):
-    """Parse HTTP Get response."""
-    code = ''
-    msg = ''
+def get_status(driver):
+    """Get HTTP response."""
+    level = ''
+    message = ''
     resp = driver.get_log('browser')
     if resp:
-        logger.info("%s", resp)
-        msg = resp[0]['message']
-        code = msg.split()[-2]
-        return msg, code
-    return msg, code
+        level = resp[0]['level']
+        message = resp[0]['message']
+        return level, message
+    return level, message
 
 
 def connect(driver, t=1):
@@ -252,14 +256,14 @@ def connect(driver, t=1):
         login_modal = get_by_xpath(driver, login_modal)
         if login_modal.get_attribute("data-target") == "#login-modal":
             login_modal.click()
-            logger.info("Lancement de l'authentification")
+            LOGGER.info("Lancement de l'authentification")
 
             if not sign_in(driver, t):
                 return False
 
     except Exception:
         string = traceback.format_exc()
-        logger.error("Un problème est survenu : %s", string)
+        LOGGER.error("Un problème est survenu : %s", string)
         return False
     else:
         return True
@@ -274,18 +278,18 @@ def get_by_xpath(driver, locator):
             return None
         return element
     except:
-        logger.error("An error occurred when selecting from: %s", locator)
+        LOGGER.error("An error occurred when selecting from: %s", locator)
         return None
 
 
 def sign_in(driver, t=1):
     """Fill in the login fields with your credentials."""
     try:
-        logger.info("time sleep: %d", t)
-        logger.info("Saisie de l'identifiant")
+        LOGGER.info("time sleep: %d", t)
+        LOGGER.info("Saisie de l'identifiant")
         time.sleep(int(t))
         get_by_id(driver, 'login-email').send_keys(LOGIN)
-        logger.info("Saisie du mot de passe")
+        LOGGER.info("Saisie du mot de passe")
         time.sleep(int(t))
         get_by_id(driver, 'login-password').send_keys(PASSWORD)
         time.sleep(int(t))
@@ -309,7 +313,7 @@ def get_by_id(driver, locator):
             return None
         return element
     except:
-        logger.error("An error occurred when selecting from: %s", locator)
+        LOGGER.error("An error occurred when selecting from: %s", locator)
         return None
 
 
@@ -317,16 +321,16 @@ def wait_signing_in(driver):
     """Wait while signing in."""
     try:
         i = 0
-        logger.info("En attente de chargement de la page...")
+        LOGGER.info("En attente de chargement de la page...")
         while True:
             if driver.current_url == ERR_URL:
-                logger.warning("%s", ERR_MSG)
+                LOGGER.warning("%s", ERR_MSG)
                 return False
             if driver.current_url == HOME_URL:
-                logger.info("Connexion réussie")
+                LOGGER.info("Connexion réussie")
                 break
             if i == 30:
-                logger.info("Échec de la connexion")
+                LOGGER.info("Échec de la connexion")
                 return False
             time.sleep(1)
             i += 1
@@ -342,15 +346,15 @@ def handle_modal(driver, locator):
         first_modal = driver.find_element_by_xpath(locator)
         first_modal.is_displayed()
     except:
-        logger.warning("Il n'y a pas de fenêtre publicitaire")
+        LOGGER.warning("Il n'y a pas de fenêtre publicitaire")
     else:
-        logger.info("Fermeture de la fenêtre publicitaire")
+        LOGGER.info("Fermeture de la fenêtre publicitaire")
         first_modal.click()
 
 
 def select_idf_region(driver):
     """Select the region."""
-    logger.info("Chargement des informations pour la région Ile-de-France")
+    LOGGER.info("Chargement des informations pour la région Ile-de-France")
     # go to region/department's combo box
     combo_box = driver.find_element_by_xpath(
         "//*[@id='select2-departements-container']")
@@ -368,20 +372,20 @@ def select_idf_region(driver):
 
 def get_program_data(driver, all_programs, folder):
     """Get program data."""
-    logger.info("Quantité des programmes immobiliers : %d\n", all_programs)
+    LOGGER.info("Quantité des programmes immobiliers : %d\n", all_programs)
     pages = number_of_page(all_programs, PROGRAMS_PER_PAGE)
 
     # collect programs within a page
     for page in range(pages):
         programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
         for i, a_program in enumerate(programs):
-            logger.info("Page %d sur %d", page+1, pages)
+            LOGGER.info("Page %d sur %d", page+1, pages)
             fetch_main_data(driver, a_program, i+1, folder)
-        logger.info("Fin des programmes de la page : %d\n", page+1)
+        LOGGER.info("Fin des programmes de la page : %d\n", page+1)
 
         # avoid to click next button on the last page
         if page != pages-1:
-            logger.info("Aller à la page %d", page+2)
+            LOGGER.info("Passage à la page %d sur %d", page+2, pages)
             driver.find_element_by_class_name('next').click()
             wait_next_page(driver, page+2)
 
@@ -397,17 +401,17 @@ def number_of_page(ele, per_page):
 
 def fetch_main_data(driver, program, index, folder):
     """Fetch main program data."""
-    logger.info("Programme %d", index)
+    LOGGER.info("Programme %d", index)
 
     residence_name = get_text(program, r'font-regular')
-    logger.info("Résidence : %s", residence_name)
+    LOGGER.info("Résidence : %s", residence_name)
 
     commune_name = get_text(program, r'font-bold')
-    logger.info("Commune : %s", commune_name)
+    LOGGER.info("Commune : %s", commune_name)
 
     nb_logement = get_text(program, r'highlight-keys')
     long_nb_logement = ' '.join(nb_logement.split('\n'))
-    logger.info("Nb logement dispo : %s", long_nb_logement)
+    LOGGER.info("Nb logement dispo : %s", long_nb_logement)
 
     # move element to program to capture
     xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
@@ -425,10 +429,10 @@ def fetch_main_data(driver, program, index, folder):
                    'city': WORD_SEP.join(commune_name.split()),
                    'size': WORD_SEP.join(
                        str(nb_logement.split('\n')[0]).split())})))
-    logger.info("Nom du fichier : %s", os.path.basename(filename))
+    LOGGER.info("Nom du fichier : %s", os.path.basename(filename))
     driver.get_screenshot_as_file(filename)
     time.sleep(2)
-    logger.info("Fin du programme \n")
+    LOGGER.info("Fin du programme \n")
 
 
 def get_text(driver, locator):
@@ -442,7 +446,7 @@ def get_text(driver, locator):
 def wait_next_page(driver, page, t=1):
     """Wait while next page is loading."""
     next_url = r"https://altarea-partenaires.com/recherche/page/{}/"
-    logger.info("Url : %s", next_url.format(page))
+    LOGGER.info("Url : %s", next_url.format(page))
     while True:
         if driver.current_url == next_url.format(page):
             break
@@ -451,7 +455,7 @@ def wait_next_page(driver, page, t=1):
 
 def save_config(folder):
     """Save configuration file."""
-    logger.info("Sauvegarde de la configuration")
+    LOGGER.info("Sauvegarde de la configuration")
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         for item in os.listdir(folder):
             f.write('{}\n'.format(item))
@@ -459,6 +463,7 @@ def save_config(folder):
 
 def dispatch(tmp, box):
     """Diagnose programs."""
+    len_tmp = len(os.listdir(tmp))
     if not os.path.exists(PICKLE_FILE):
         # create a pickle file
         previous_set = read_config()
@@ -471,40 +476,40 @@ def dispatch(tmp, box):
     # comparison
     program = find_program(former, stream)
     if isinstance(program, type(None)):
-        logger.info("Aucun changement, pas d'envoi de courriel")
-        # logger.info("Aucun changement, envoi du courriel approprié")
-        # send_mail(*TEMPLATE_DICT[1], box)
+        LOGGER.info("Aucun changement, pas d'envoi de courriel")
+        # LOGGER.info("Aucun changement, envoi du courriel approprié")
+        # send_mail(*TEMPLATE_DICT[1], box, len_tmp)
 
         # sync with the last update
         older = former - stream
         if older:
-            logger.info("Synchronisation avec la dernière mise à jour")
+            LOGGER.info("Synchronisation avec la dernière mise à jour")
             dump_to_pickle(PICKLE_FILE, stream)
     else:
-        logger.info("Analyse de(s) programme(s) mis à jour")
+        LOGGER.info("Analyse de(s) programme(s) mis à jour")
         # step 1 - updated program
         updated = stream - former
-        logger.info("« %d » programme(s) mis à jour", len(updated))
+        LOGGER.info("« %d » programme(s) mis à jour", len(updated))
 
         # step 2 - sync with the last update
-        logger.info("Synchronisation avec la dernière mise à jour")
+        LOGGER.info("Synchronisation avec la dernière mise à jour")
         dump_to_pickle(PICKLE_FILE, stream)
 
         # step 3 - moving updated program from temp to mail directory
-        logger.info("Envoi de(s) programme(s) vers le répertoire mail")
+        LOGGER.info("Envoi de(s) programme(s) vers le répertoire mail")
         for an_update in updated:
             move_file(an_update, tmp, box)
 
         # step 4 - send email
         if box:
-            logger.info("Envoi de mail")
-            len_img_mail = len(os.listdir(box))
-            send_mail(*TEMPLATE_DICT[0], box, len_img_mail)
-            logger.info("Mail envoyé")
+            LOGGER.info("Envoi de mail")
+            len_mail = len(os.listdir(box))
+            send_mail(*TEMPLATE_DICT[0], box, len_tmp, len_mail)
+            LOGGER.info("Mail envoyé")
         else:
-            logger.info("Aucun changement, pas d'envoi de courriel")
-            # logger.info("Aucun changement, envoi du courriel approprié")
-            # send_mail(*TEMPLATE_DICT[1], box)
+            LOGGER.info("Aucun changement, pas d'envoi de courriel")
+            # LOGGER.info("Aucun changement, envoi du courriel approprié")
+            # send_mail(*TEMPLATE_DICT[1], box, len_tmp)
     return True
 
 
@@ -545,17 +550,22 @@ def find_program(former, stream):
         val = stream - former
         assert len(val) != 0
     except AssertionError:
-        logger.warning("Il n'y a aucun changement")
+        LOGGER.warning("Il n'y a aucun changement")
         return None
     else:
-        logger.info("Il y a « %d » changement(s)", len(val))
+        LOGGER.info("Il y a « %d » changement(s)", len(val))
         return val
 
 
-def send_mail(filename, sub, folder, size=None):
+def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
+    # read receivers
+    receivers = ', '.join(get_emails(RECEIVERS_FILE))
+    LOGGER.info("Destinataires : %s", receivers)
     # read template
     a_template = read_template(filename)
+    if isinstance(length, type(int())):
+        a_template = Template(a_template.safe_substitute(TOTAL=str(length)))
 
     # set timecode on email's subject
     locale.setlocale(locale.LC_TIME, "fr_FR")
@@ -567,22 +577,22 @@ def send_mail(filename, sub, folder, size=None):
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = MAIL_LOGIN
-    msg['To'] = ', '.join(get_emails(RECEIVERS_FILE))
+    msg['To'] = receivers
     msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
 
     # detect kind of message to process allowing to size
     if not isinstance(size, type(None)):
-        logger.info("Traitement de message avec %d pièce(s) jointe(s)", size)
+        LOGGER.info("Traitement de message avec %d pièce(s) jointe(s)", size)
         path_ = os.path.abspath(folder)
         files = os.listdir(folder)
 
         # determine files' size
         current_size = get_list_size([os.path.join(path_, i) for i in files])
-        logger.info("Taille de fichier(s) d'envoi(s) : %s",
+        LOGGER.info("Taille de fichier(s) d'envoi(s) : %s",
                     "{0:.2f} Mo".format(round(current_size/1000000, 2)))
         if current_size > MAX_FILE_SIZE:
             lots = share_by_lots(folder)
-            logger.info("Traitement de message par %d envois", len(lots))
+            LOGGER.info("Traitement de message par %d envois", len(lots))
             for i, a_lot in enumerate(lots):
                 flag = add_flag(i+1, len(lots))
                 msg.replace_header('Subject', "{} - {}".format(subject, flag))
@@ -595,7 +605,7 @@ def send_mail(filename, sub, folder, size=None):
         else:
             message_with_attachments(msg, path_, files, a_template)
     else:
-        logger.info("Traitement de message sans pièce jointe")
+        LOGGER.info("Traitement de message sans pièce jointe")
         message_without_attachment(msg, a_template)
 
 
@@ -654,14 +664,16 @@ def share_by_lots(folder):
         tab.append(item)
         length = get_list_size([os.path.join(path, i) for i in tab])
         while check_size_limit(length, MAX_FILE_SIZE):
-            ret.append(tab)
+            ret.append(tab[:-1])
+            last = tab[-1]
             tab = []
+            tab.append(last)
             break
     ret.append(tab)
     return ret
 
 
-def check_size_limit(val1, val2, limit=90):
+def check_size_limit(val1, val2, limit=100):
     """Compare result to the limit."""
     rate = round((val1/val2)*100)
     if rate < limit:
@@ -706,7 +718,7 @@ def stringify_main_info(lst):
 
 def add_attach(msg, filenames):
     """Attach files in binary mode."""
-    logger.info("Ajout de « %d fichier(s) »", len(filenames))
+    LOGGER.info("Ajout de « %d fichier(s) »", len(filenames))
     for filename in filenames:
         with open(filename, 'rb') as fp:
             img_data = fp.read()
@@ -743,9 +755,9 @@ def move_file(item, dirpath, dst_path):
                                           os.path.basename(item))))
         move(src_path, dst_path)
     except FileNotFoundError as fnfe:
-        logger.error("Le fichier n'existe pas ou a été déplacé : %s", fnfe)
+        LOGGER.error("Le fichier n'existe pas ou a été déplacé : %s", fnfe)
     except Error as err:
-        logger.error("Ce titre existe déjà : %s", err)
+        LOGGER.error("Ce titre existe déjà : %s", err)
 
 
 def send_direct_email(tmp, box):
@@ -757,7 +769,7 @@ def send_direct_email(tmp, box):
         # go to website of concern
         driver.get(ALTAREA_URL)
         wait_loading(driver)
-        logger.info("Chargement de la page d'accueil : %s", driver.title)
+        LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
 
         # open your session
         if not connect(driver, 3):
@@ -771,11 +783,11 @@ def send_direct_email(tmp, box):
                 if grabbed:
                     dispatch(tmp, box)
         else:
-            logger.info("La cause du problème n'est pas l'accès au site")
+            LOGGER.info("La cause du problème n'est pas l'accès au site")
 
     except Exception:
         string = traceback.format_exc()
-        logger.error("Un problème est survenu : %s", string)
+        LOGGER.error("Un problème est survenu : %s", string)
         return None
 
     finally:
@@ -814,8 +826,9 @@ def check_size():
 def main():
     """Process the capture of pictures."""
     start = time.time()
+    init_logger()
     try:
-        logger.info("Lancement du processus")
+        LOGGER.info("Lancement du processus")
         # create temporary directory
         box_dir = tempfile.TemporaryDirectory(dir=RESOURCES_DIR)
         box = box_dir.name
@@ -824,7 +837,7 @@ def main():
 
         nb_retries = 4  # number of attempts allowed after any failures
         while nb_retries > 0:
-            logger.info("Nb retries allowed: %d", nb_retries)
+            LOGGER.info("Nb retries allowed: %d", nb_retries)
             # launch grab & dispatch
             # condition to break while loop
             grabbed = grab(tmp, box)
@@ -837,25 +850,26 @@ def main():
             nb_retries -= 1
 
         else:
-            # bad network or bad credential
+            # bad credential
             if send_direct_email(tmp, box):
-                logger.info("La notification d'échec de connexion est envoyée")
+                LOGGER.info("La notification d'échec de connexion est envoyée")
 
     except FileNotFoundError as err:
-        logger.error("Un problème est survenu : %s", err)
+        LOGGER.error("Un problème est survenu : %s", err)
 
     except SystemExit as se:
-        logger.error("Un problème est survenu : %s", se)
+        LOGGER.error("Un problème est survenu : %s", se)
 
     finally:
         print("\n> Fin du processus")
-        logger.info("Fin du processus")
+        LOGGER.info("Fin du processus")
         duration = elapsed_time(time.time() - start)
-        logger.info("Total time: %s\n", duration)
+        LOGGER.info("Total time: %s\n", duration)
         print("\n>>> Total time:", duration)
 
 
 if __name__ == '__main__':
+    main()
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
