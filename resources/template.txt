@@ -2,7 +2,7 @@ ${LOTS}
 
 Bonjour,
 
-Vous trouverez ci-dessous les principales informations, depuis la dernière notification, sur les programmes immobiliers d'Altarea Partenaires ! pour la région Ile-de-France :
+Vous trouverez ci-dessous les principales informations, depuis la dernière notification, des ${TOTAL} programmes immobiliers d'Altarea Partenaires ! pour la région Ile-de-France :
 
 
 ${MAIN_INFO}
