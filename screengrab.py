@@ -1,4 +1,4 @@
-"""Screengrab, capture, grab pictures but send."""
+"""Screengrab, grab pictures to send."""
 
 import imghdr
 import locale
@@ -14,9 +14,6 @@ from datetime import datetime as dt
 from email.message import EmailMessage
 from functools import reduce, wraps
 from string import Template
-
-from pprint import pprint
-from pdb import set_trace
 
 try:
     import pickle
@@ -43,7 +40,7 @@ RESOURCES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources'))
 # filenames
 CONFIG_FILENAME = "default_conf.inf"
 PICKLE_FILENAME = "programs.pickle"
-RECEIVERS_FILENAME = "users_info1.inf"
+RECEIVERS_FILENAME = "users_info.inf"
 MAIN_TEMPLATE_FILENAME = "template.txt"
 NO_PICTURE_TEMPLATE_FILENAME = "template_no_picture.txt"
 NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.txt"
@@ -73,6 +70,7 @@ PASSWORD = os.environ["ALTAREA_PASSWORD"]
 
 # constants
 ALTAREA_URL = r"https://altarea-partenaires.com"
+REGION_ILE_DE_FRANCE = r'Ile-de-France'
 PROGRAMS_PER_PAGE = 12
 ERR_URL = r"https://altarea-partenaires.com/wp-login.php"
 ERR_MSG = r"Une erreur critique est survenue sur votre site"
@@ -91,7 +89,7 @@ TEMPLATE_DICT = OrderedDict([
       [
           "un seul programme a bougé dans la corbeille d'Altarea Partenaires !",
           "venez découvrir ce qui a changé dans les deux programmes parmi les offres d'Altarea Partenaires !",
-          "ça galope du côté d'Altarea Partenaires ! Venez découvrir les {} mouvements parmi les offres !",
+          "ça galope chez Altarea Partenaires ! Venez découvrir les {} mouvements parmi les offres !",
           "ça va déménager ! Venez découvrir les {} mouvements parmi les offres d'Altarea Partenaires !"]]),
     (1,
      [NO_PICTURE_TEMPLATE_FILE,
@@ -103,20 +101,18 @@ TEMPLATE_DICT = OrderedDict([
 # WEBDRIVER
 EXECUTABLE_PATH = r"C:\Program Files (x86)\chromedriver.exe"
 
-
-def init_logger():
-    """create and configure logger."""
-    LOGGER.setLevel(logging.INFO)
-    log_path = os.path.normpath(os.path.join(DIRNAME, "log"))
-    formatter = logging.Formatter(
-        '[%(asctime)s:%(module)s:%(lineno)s:%(levelname)s] %(message)s')
-    log_file = os.path.join(log_path, "{filenam}{log_ext}".format(
-        **{'filenam': os.path.basename(sys.argv[0].split('.')[0]),
-           'log_ext': '.log'}))
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
-    LOGGER.addHandler(file_handler)
+# create and configure logger."""
+LOGGER.setLevel(logging.INFO)
+log_path = os.path.normpath(os.path.join(DIRNAME, "log"))
+formatter = logging.Formatter(
+    '[%(asctime)s:%(module)s:%(lineno)s:%(levelname)s] %(message)s')
+log_file = os.path.join(log_path, "{filenam}{log_ext}".format(
+    **{'filenam': os.path.basename(sys.argv[0].split('.')[0]),
+       'log_ext': '.log'}))
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+LOGGER.addHandler(file_handler)
 
 
 def with_logging(func):
@@ -141,7 +137,6 @@ def grab(tmp, box):
         wait_loading(driver)
         level, message = get_status(driver)
         LOGGER.info("Niveau : %s", level)
-
         # check if there is a network issue
         if level == 'SEVERE':
             msg = ' '.join(message.rsplit(':', 1)[1].split()[:-1])
@@ -352,22 +347,27 @@ def handle_modal(driver, locator):
         first_modal.click()
 
 
-def select_idf_region(driver):
+def select_idf_region(driver, region=REGION_ILE_DE_FRANCE):
     """Select the region."""
+    region_dept_xpath = r"//*[@id='select2-departements-container']"
     LOGGER.info("Chargement des informations pour la région Ile-de-France")
     # go to region/department's combo box
-    combo_box = driver.find_element_by_xpath(
-        "//*[@id='select2-departements-container']")
+    combo_box = driver.find_element_by_xpath(region_dept_xpath)
     combo_box.click()
-    time.sleep(1)
-    # select IDF region in the combo-box
-    combo_box.find_element_by_xpath(
-        "//*[@id='select2-departements-results']/li[13]").click()
-    time.sleep(1)
-    # submit the program
-    driver.find_element_by_xpath(
-        "//*[@id='form-recherche']/div[4]/div/button[1]").click()
-    time.sleep(3)
+    # set IDF region program in the combo-box
+    results = driver.find_elements_by_xpath(
+        "//*[@id='select2-departements-results']/li")
+    for result in results:
+        if result.text == region:
+            result.click()
+            time.sleep(1)
+            break
+    # validate the entry and  submit to the program
+    selected = driver.find_element_by_xpath(region_dept_xpath)
+    if selected.text == region:
+        driver.find_element_by_xpath(
+            "//*[@id='form-recherche']/div[4]/div/button[1]").click()
+        time.sleep(3)
 
 
 def get_program_data(driver, all_programs, folder):
@@ -476,7 +476,7 @@ def dispatch(tmp, box):
     # comparison
     program = find_program(former, stream)
     if isinstance(program, type(None)):
-        LOGGER.info("Aucun changement, pas d'envoi de courriel")
+        LOGGER.info("Pas d'envoi de courriel")
         # LOGGER.info("Aucun changement, envoi du courriel approprié")
         # send_mail(*TEMPLATE_DICT[1], box, len_tmp)
 
@@ -507,7 +507,7 @@ def dispatch(tmp, box):
             send_mail(*TEMPLATE_DICT[0], box, len_tmp, len_mail)
             LOGGER.info("Mail envoyé")
         else:
-            LOGGER.info("Aucun changement, pas d'envoi de courriel")
+            LOGGER.info("Pas d'envoi de courriel")
             # LOGGER.info("Aucun changement, envoi du courriel approprié")
             # send_mail(*TEMPLATE_DICT[1], box, len_tmp)
     return True
@@ -560,6 +560,7 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
+    # receivers = 'mike.kabika@gmail.com'
     receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
@@ -715,15 +716,26 @@ def stringify_main_info(lst):
                'size': item[2]}))
     return ''.join(['{}\n\n'.format(i) for i in tab])
 
+def rename(string):
+    """Rename."""
+    string = ' '.join(string.split(MAIN_SEP))
+    string = ' '.join(string.split(WORD_SEP))
+    return string
 
-def add_attach(msg, filenames):
+
+def add_attach(msg, filenames, main_type='image'):
     """Attach files in binary mode."""
     LOGGER.info("Ajout de « %d fichier(s) »", len(filenames))
     for filename in filenames:
-        with open(filename, 'rb') as fp:
-            img_data = fp.read()
-        msg.add_attachment(img_data, maintype='image',
-                           subtype=imghdr.what(None, img_data))
+        with open(filename, 'rb') as f:
+            f_data = f.read()
+            f_type = imghdr.what(f.name)
+            f_name = rename(os.path.basename(f.name))
+        msg.add_attachment(
+            f_data,
+            maintype=main_type,
+            subtype=f_type,
+            filename=f_name)
     return msg
 
 
@@ -826,7 +838,7 @@ def check_size():
 def main():
     """Process the capture of pictures."""
     start = time.time()
-    init_logger()
+    # init_logger()
     try:
         LOGGER.info("Lancement du processus")
         # create temporary directory
@@ -858,7 +870,7 @@ def main():
         LOGGER.error("Un problème est survenu : %s", err)
 
     except SystemExit as se:
-        LOGGER.error("Un problème est survenu : %s", se)
+        LOGGER.error("Un arrêt est demandé : %s", se)
 
     finally:
         print("\n> Fin du processus")
@@ -869,7 +881,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # schedule.every(2).minutes.do(main)
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
     schedule.every().monday.at("10:00").do(main)
