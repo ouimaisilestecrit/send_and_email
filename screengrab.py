@@ -41,9 +41,9 @@ RESOURCES_DIR = os.path.normpath(os.path.join(DIRNAME, 'resources'))
 CONFIG_FILENAME = "default_conf.inf"
 PICKLE_FILENAME = "programs.pickle"
 RECEIVERS_FILENAME = "users_info.inf"
-MAIN_TEMPLATE_FILENAME = "template.txt"
-NO_PICTURE_TEMPLATE_FILENAME = "template_no_picture.txt"
-NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.txt"
+MAIN_TEMPLATE_FILENAME = "template.html"
+NO_PICTURE_TEMPLATE_FILENAME = "template_no_picture.html"
+NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.html"
 
 # files
 PICKLE_FILE = os.path.normpath(os.path.join(BIN_DIR, PICKLE_FILENAME))
@@ -560,8 +560,8 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
-    # receivers = 'mike.kabika@gmail.com'
-    receivers = ', '.join(get_emails(RECEIVERS_FILE))
+    receivers = 'mike.kabika@gmail.com'
+    # receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
     a_template = read_template(filename)
@@ -691,13 +691,11 @@ def add_flag(index, length):
 def message_with_attachments(msg, path_, files, a_template, lots=str()):
     """Prepare message with an attachment."""
     # feed the email with programs's main information
-    string = stringify_main_info(files)
-    message = Template(a_template.safe_substitute(MAIN_INFO=string.title()))
-    message = message.substitute(LOTS=lots)
-
-    # add in the message body
-    msg.set_content(message)
-
+    html_table = stringify_main_info(files)
+    html_message = a_template.substitute(
+        LOTS=lots,
+        MAIN_INFO=html_table.title())
+    msg.add_alternative(html_message, subtype='html')
     # attach files to message
     msg = add_attach(msg, [os.path.join(path_, i) for i in files])
     send(msg)
@@ -705,16 +703,19 @@ def message_with_attachments(msg, path_, files, a_template, lots=str()):
 
 def stringify_main_info(lst):
     """Convert list of a program's main information as a string."""
-    tab = []
+    tab_html = []
+    tab_div = '<div style="margin:0;padding:0;color:#5a6883;font-size:12px;line-height:20px">{}</div>'
+    tab_p = '<p>{0} <strong><span style="color:#333">{1}</span></strong></p>'
     for i, item_filename in enumerate(sorted(lst)):
         item = item_filename.split(IMG_FILE_EXTENSION)[0]
         item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
-        tab.append('{line}. {name} - {city} : {size}'.format(
-            **{'line': str(i+1).rjust(2),
-               'name': item[0],
-               'city': item[1],
-               'size': item[2]}))
-    return ''.join(['{}\n\n'.format(i) for i in tab])
+        tab_html.append(tab_p.format(
+            '<strong>{0}.</strong> {1} - {2} : '.format(
+                str(i+1).rjust(2), item[0], item[1]), item[2]))
+    html_str = ''.join(['{}\n\n'.format(i) for i in tab_html])
+    html_str = tab_div.format(html_str)
+    return html_str
+
 
 def rename(string):
     """Rename."""
@@ -753,8 +754,9 @@ def send(msg):
 
 def message_without_attachment(msg, a_template):
     """Prepare message without any attachment."""
-    # add in the message body
-    msg.set_content(a_template.safe_substitute())
+    # add in the email message
+    html_message = a_template.safe_substitute()
+    msg.add_alternative(html_message, subtype='html')
     # send the email
     send(msg)
 
@@ -881,43 +883,44 @@ def main():
 
 
 if __name__ == '__main__':
+    main()
     # schedule.every(2).minutes.do(main)
-    # monday schedule
-    schedule.every().monday.at("06:00").do(main)
-    schedule.every().monday.at("10:00").do(main)
-    schedule.every().monday.at("14:00").do(main)
-    schedule.every().monday.at("20:00").do(main)
+    # # monday schedule
+    # schedule.every().monday.at("06:00").do(main)
+    # schedule.every().monday.at("10:00").do(main)
+    # schedule.every().monday.at("14:00").do(main)
+    # schedule.every().monday.at("20:00").do(main)
 
-    # tuesday schedule
-    schedule.every().tuesday.at("06:00").do(main)
-    schedule.every().tuesday.at("10:00").do(main)
-    schedule.every().tuesday.at("14:00").do(main)
-    schedule.every().tuesday.at("20:00").do(main)
+    # # tuesday schedule
+    # schedule.every().tuesday.at("06:00").do(main)
+    # schedule.every().tuesday.at("10:00").do(main)
+    # schedule.every().tuesday.at("14:00").do(main)
+    # schedule.every().tuesday.at("20:00").do(main)
 
-    # wednesday schedule
-    schedule.every().wednesday.at("06:00").do(main)
-    schedule.every().wednesday.at("10:00").do(main)
-    schedule.every().wednesday.at("14:00").do(main)
-    schedule.every().wednesday.at("20:00").do(main)
+    # # wednesday schedule
+    # schedule.every().wednesday.at("06:00").do(main)
+    # schedule.every().wednesday.at("10:00").do(main)
+    # schedule.every().wednesday.at("14:00").do(main)
+    # schedule.every().wednesday.at("20:00").do(main)
 
-    # thursday schedule
-    schedule.every().thursday.at("06:00").do(main)
-    schedule.every().thursday.at("10:00").do(main)
-    schedule.every().thursday.at("14:00").do(main)
-    schedule.every().thursday.at("20:00").do(main)
+    # # thursday schedule
+    # schedule.every().thursday.at("06:00").do(main)
+    # schedule.every().thursday.at("10:00").do(main)
+    # schedule.every().thursday.at("14:00").do(main)
+    # schedule.every().thursday.at("20:00").do(main)
 
-    # friday schedule
-    schedule.every().friday.at("06:00").do(main)
-    schedule.every().friday.at("10:00").do(main)
-    schedule.every().friday.at("14:00").do(main)
-    schedule.every().friday.at("20:00").do(main)
+    # # friday schedule
+    # schedule.every().friday.at("06:00").do(main)
+    # schedule.every().friday.at("10:00").do(main)
+    # schedule.every().friday.at("14:00").do(main)
+    # schedule.every().friday.at("20:00").do(main)
 
-    # saturday schedule
-    schedule.every().saturday.at("06:00").do(main)
-    schedule.every().saturday.at("10:00").do(main)
-    schedule.every().saturday.at("14:00").do(main)
-    schedule.every().saturday.at("20:00").do(main)
+    # # saturday schedule
+    # schedule.every().saturday.at("06:00").do(main)
+    # schedule.every().saturday.at("10:00").do(main)
+    # schedule.every().saturday.at("14:00").do(main)
+    # schedule.every().saturday.at("20:00").do(main)
 
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    # while True:
+        # schedule.run_pending()
+        # time.sleep(1)
