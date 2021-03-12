@@ -560,6 +560,7 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
+    # receivers = 'mike.kabika@gmail.com, expertduneuf@hotmail.com'
     receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
