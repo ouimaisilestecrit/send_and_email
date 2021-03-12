@@ -560,8 +560,7 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
-    receivers = 'mike.kabika@gmail.com'
-    # receivers = ', '.join(get_emails(RECEIVERS_FILE))
+    receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
     a_template = read_template(filename)
@@ -692,6 +691,10 @@ def message_with_attachments(msg, path_, files, a_template, lots=str()):
     """Prepare message with an attachment."""
     # feed the email with programs's main information
     html_table = stringify_main_info(files)
+
+    # feature to add in plain text message in the body
+    # msg.set_content(message)
+
     html_message = a_template.substitute(
         LOTS=lots,
         MAIN_INFO=html_table.title())
@@ -704,14 +707,21 @@ def message_with_attachments(msg, path_, files, a_template, lots=str()):
 def stringify_main_info(lst):
     """Convert list of a program's main information as a string."""
     tab_html = []
-    tab_div = '<div style="margin:0;padding:0;color:#5a6883;font-size:12px;line-height:20px">{}</div>'
-    tab_p = '<p>{0} <strong><span style="color:#333">{1}</span></strong></p>'
+    tab_div = '<div style="margin:0;padding:0;color:#5a6883;line-height:20px;text-align:left;">{}</div>'
+    data = """\
+    <div>
+        <legend>
+            {0} <strong><span style="color:#333;">{1}</span></strong>
+        </legend>
+        <img src="cid:{2}" style="width:100%;">
+    </div>"""
     for i, item_filename in enumerate(sorted(lst)):
+        f_name = rename(os.path.basename(item_filename))
         item = item_filename.split(IMG_FILE_EXTENSION)[0]
         item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
-        tab_html.append(tab_p.format(
+        tab_html.append(data.format(
             '<strong>{0}.</strong> {1} - {2} : '.format(
-                str(i+1).rjust(2), item[0], item[1]), item[2]))
+                str(i+1).rjust(2), item[0], item[1]), item[2], f_name))
     html_str = ''.join(['{}\n\n'.format(i) for i in tab_html])
     html_str = tab_div.format(html_str)
     return html_str
@@ -732,6 +742,7 @@ def add_attach(msg, filenames, main_type='image'):
             f_data = f.read()
             f_type = imghdr.what(f.name)
             f_name = rename(os.path.basename(f.name))
+            msg.add_header('Content-ID', '{}'.format(f_name))
         msg.add_attachment(
             f_data,
             maintype=main_type,
