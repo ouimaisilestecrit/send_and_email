@@ -210,13 +210,15 @@ def check_version(driver):
         v_nav = "Version du navigateur"
         v_drv = "Version de ChromeDriver"
         err = "Interruption du processus, veuillez mettre à jour ChromeDriver"
+        maj = "Veuillez consulter le fichier README.md pour la mise à jour"
         print("{} : {}".format(v_nav, browser_v))
         print("{} : {}".format(v_drv, chrome_driver_v))
         print(err)
+        print(maj)
         LOGGER.error("%s : %s", v_nav, browser_v)
         LOGGER.error("%s : %s", v_drv, chrome_driver_v)
         LOGGER.error("%s", err)
-        sys.exit(err)
+        sys.exit(maj)
 
 
 def wait_loading(drv):
@@ -689,7 +691,14 @@ def add_flag(index, length):
 
 
 def message_with_attachments(msg, path_, files, a_template, lots=str()):
-    """Prepare message with an attachment."""
+    """Prepare message with an attachment.
+
+    19.1.1. email.message: Representing an email message:
+    https://docs.python.org/3.6/library/email.message.html#email.message.EmailMessage
+
+    How to Embed Images in Your Emails: The Facts:
+    https://sendgrid.com/blog/embedding-images-emails-facts/
+    """
     # feed the email with programs's main information
     html_table = stringify_main_info(files)
 
@@ -895,7 +904,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
     # schedule.every(2).minutes.do(main)
     # # monday schedule
     # schedule.every().monday.at("06:00").do(main)
@@ -903,11 +912,11 @@ if __name__ == '__main__':
     # schedule.every().monday.at("14:00").do(main)
     # schedule.every().monday.at("20:00").do(main)
 
-    # # tuesday schedule
-    # schedule.every().tuesday.at("06:00").do(main)
-    # schedule.every().tuesday.at("10:00").do(main)
-    # schedule.every().tuesday.at("14:00").do(main)
-    # schedule.every().tuesday.at("20:00").do(main)
+    # tuesday schedule
+    schedule.every().tuesday.at("06:00").do(main)
+    schedule.every().tuesday.at("10:00").do(main)
+    schedule.every().tuesday.at("14:00").do(main)
+    schedule.every().tuesday.at("20:00").do(main)
 
     # # wednesday schedule
     # schedule.every().wednesday.at("06:00").do(main)
@@ -927,12 +936,12 @@ if __name__ == '__main__':
     # schedule.every().friday.at("14:00").do(main)
     # schedule.every().friday.at("20:00").do(main)
 
-    # # saturday schedule
-    # schedule.every().saturday.at("06:00").do(main)
-    # schedule.every().saturday.at("10:00").do(main)
-    # schedule.every().saturday.at("14:00").do(main)
-    # schedule.every().saturday.at("20:00").do(main)
+    # saturday schedule
+    schedule.every().saturday.at("06:00").do(main)
+    schedule.every().saturday.at("10:00").do(main)
+    schedule.every().saturday.at("14:00").do(main)
+    schedule.every().saturday.at("20:00").do(main)
 
-    # while True:
-        # schedule.run_pending()
-        # time.sleep(1)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
