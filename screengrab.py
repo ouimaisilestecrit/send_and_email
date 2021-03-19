@@ -904,13 +904,13 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
+#    main()
     # schedule.every(2).minutes.do(main)
-    # # monday schedule
-    # schedule.every().monday.at("06:00").do(main)
-    # schedule.every().monday.at("10:00").do(main)
-    # schedule.every().monday.at("14:00").do(main)
-    # schedule.every().monday.at("20:00").do(main)
+    # monday schedule
+    schedule.every().monday.at("06:00").do(main)
+    schedule.every().monday.at("10:00").do(main)
+    schedule.every().monday.at("14:00").do(main)
+    schedule.every().monday.at("20:00").do(main)
 
     # tuesday schedule
     schedule.every().tuesday.at("06:00").do(main)
@@ -918,23 +918,23 @@ if __name__ == '__main__':
     schedule.every().tuesday.at("14:00").do(main)
     schedule.every().tuesday.at("20:00").do(main)
 
-    # # wednesday schedule
-    # schedule.every().wednesday.at("06:00").do(main)
-    # schedule.every().wednesday.at("10:00").do(main)
-    # schedule.every().wednesday.at("14:00").do(main)
-    # schedule.every().wednesday.at("20:00").do(main)
+    # wednesday schedule
+    schedule.every().wednesday.at("06:00").do(main)
+    schedule.every().wednesday.at("10:00").do(main)
+    schedule.every().wednesday.at("14:00").do(main)
+    schedule.every().wednesday.at("20:00").do(main)
 
-    # # thursday schedule
-    # schedule.every().thursday.at("06:00").do(main)
-    # schedule.every().thursday.at("10:00").do(main)
-    # schedule.every().thursday.at("14:00").do(main)
-    # schedule.every().thursday.at("20:00").do(main)
+    # thursday schedule
+    schedule.every().thursday.at("06:00").do(main)
+    schedule.every().thursday.at("10:00").do(main)
+    schedule.every().thursday.at("14:00").do(main)
+    schedule.every().thursday.at("20:00").do(main)
 
-    # # friday schedule
-    # schedule.every().friday.at("06:00").do(main)
-    # schedule.every().friday.at("10:00").do(main)
-    # schedule.every().friday.at("14:00").do(main)
-    # schedule.every().friday.at("20:00").do(main)
+    # friday schedule
+    schedule.every().friday.at("06:00").do(main)
+    schedule.every().friday.at("10:00").do(main)
+    schedule.every().friday.at("14:00").do(main)
+    schedule.every().friday.at("20:00").do(main)
 
     # saturday schedule
     schedule.every().saturday.at("06:00").do(main)
