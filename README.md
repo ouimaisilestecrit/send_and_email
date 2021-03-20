@@ -34,6 +34,19 @@
 * puis faire un clic droit dans ce répertoire et choisir coller
 * dans la fenêtre "Remplacer ou ignorer les fichiers", cliquer sur "Remplacer le fichier dans la destination"
 
+## Comment ajouter un créneau d'exécution :
+
+Le créneau est formé de deux paramètres : le jour et l'heure d'exécution.
+
+* ouvrir le fichier `execution_time.inf` du répertoire conf :
+
+    - pour ajouter le jour d'exécution, repérer la ligne commençant par `jour=`, et saisir des jours parmi les sept jours de la semaine en les séparant par une virgule.
+        Ex. : jour=lundi,mardi,jeudi
+    - pour ajouter l'heure d'exécution, repérer la ligne commençant par `heure=`, et saisir une heure dans le format suivant `hh:mm`.
+        Ex. : heure=06:15,12:00,17:09
+
+* enregistrer et quitter le fichier `execution_time.inf`
+
 # Conseils pratiques ?
 
 * l'accumulation des logs peut causer un ralentissement, vider les périodiquement, en supprimant dans le répertoire log, le fichier se terminant par ".log", ce dernier est créé à chaque lancement de l'outil.

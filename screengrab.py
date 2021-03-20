@@ -15,6 +15,9 @@ from email.message import EmailMessage
 from functools import reduce, wraps
 from string import Template
 
+from pdb import set_trace
+from pprint import pprint
+
 try:
     import pickle
     import schedule
@@ -42,6 +45,7 @@ CONFIG_FILENAME = "default_conf.inf"
 PICKLE_FILENAME = "programs.pickle"
 RECEIVERS_FILENAME = "users_info.inf"
 MAIN_TEMPLATE_FILENAME = "template.html"
+EXECUTION_TIME_FILENAME = "execution_time.inf"
 NO_PICTURE_TEMPLATE_FILENAME = "template_no_picture.html"
 NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.html"
 
@@ -49,6 +53,7 @@ NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.html"
 PICKLE_FILE = os.path.normpath(os.path.join(BIN_DIR, PICKLE_FILENAME))
 CONFIG_FILE = os.path.normpath(os.path.join(CONF_DIR, CONFIG_FILENAME))
 RECEIVERS_FILE = os.path.normpath(os.path.join(CONF_DIR, RECEIVERS_FILENAME))
+EXECUTION_TIME_FILE = os.path.normpath(os.path.join(CONF_DIR, EXECUTION_TIME_FILENAME))
 MAIN_TEMPLATE_FILE = os.path.normpath(
     os.path.join(RESOURCES_DIR, MAIN_TEMPLATE_FILENAME))
 NO_PICTURE_TEMPLATE_FILE = os.path.normpath(
@@ -81,7 +86,9 @@ MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
 # separators
 MAIN_SEP = '='  # equal sign for main information
 WORD_SEP = '_'  # underscore for word's separator
-
+COMMA_SEP = ','  # comma sign
+COLON_SEP = ':'  # colon sign
+ 
 # template dictionary of file's message and subjects
 TEMPLATE_DICT = OrderedDict([
     (0,
@@ -98,6 +105,22 @@ TEMPLATE_DICT = OrderedDict([
      [NOT_AVAILABLE_TEMPLATE_FILE,
       r"Alerte ! Problème de connexion sur Altarea Partenaires !"])])
 
+
+# days of week dictionary
+DAYS_OF_WEEK_DICT = OrderedDict([
+    ('dimanche', 'sunday'),
+    ('lundi', 'monday'),
+    ('mardi', 'tuesday'),
+    ('mercredi', 'wednesday'),
+    ('jeudi', 'thursday'),
+    ('vendredi', 'friday'),
+    ('samedi', 'saturday')])
+
+LANG_DICT = OrderedDict([
+    ('jour', 'day'),
+    ('heure', 'hour')
+])
+
 # WEBDRIVER
 EXECUTABLE_PATH = r"C:\Program Files (x86)\chromedriver.exe"
 
@@ -113,6 +136,54 @@ file_handler = logging.FileHandler(log_file)
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
 LOGGER.addHandler(file_handler)
+
+
+def get_time(h=None, m='0'):
+    """Return time."""
+    ret = ''
+    if isinstance(h, type(str())) and isinstance(m, type(str())):
+        h = int(h)
+        m = int(m)
+        if (h >= 0 and h < 24) and (m >= 0 and m < 60):
+            ret = '{0}:{1}'.format(
+                str(h).zfill(2),
+                str(m).zfill(2))
+    return ret 
+
+
+def get_lang_val(lang=None):
+    """Return lang name."""
+    return LANG_DICT.get(lang, None)
+
+
+def get_day(day=None):
+    """Return book name from its ordinal number."""
+    return DAYS_OF_WEEK_DICT.get(day, None)
+
+
+def get_execution_time(filename):
+    """Read execution time info.
+
+    Function to read the execution time entries from a given file
+    and return a lists of days and hours.
+    """
+    _dict = {}
+    with open(filename, 'r', encoding='utf-8') as lines:
+        for line in lines:
+            line = line.strip()
+            line = line.split(MAIN_SEP)
+            _dict[get_lang_val(line[0])] = line[1].split(COMMA_SEP)
+    pprint(_dict)
+    print()
+
+    days = [get_day(i) for i in _dict['day'] if get_day(i) != None]
+    print('days : ', end=' ')
+    pprint(days)
+    hours = set([get_time(j) for i in _dict['hour'] for j in (i.split(COLON_SEP)) if get_time(j) != ''])
+    print('hours: ', end=' ')
+    pprint(hours)
+    
+    return days, hours
 
 
 def with_logging(func):
@@ -904,44 +975,44 @@ def main():
 
 
 if __name__ == '__main__':
-#    main()
+    get_execution_time(EXECUTION_TIME_FILE)
     # schedule.every(2).minutes.do(main)
-    # monday schedule
-    schedule.every().monday.at("06:00").do(main)
-    schedule.every().monday.at("10:00").do(main)
-    schedule.every().monday.at("14:00").do(main)
-    schedule.every().monday.at("20:00").do(main)
+    # # monday schedule
+    # schedule.every().monday.at("06:00").do(main)
+    # schedule.every().monday.at("10:00").do(main)
+    # schedule.every().monday.at("14:00").do(main)
+    # schedule.every().monday.at("20:00").do(main)
 
-    # tuesday schedule
-    schedule.every().tuesday.at("06:00").do(main)
-    schedule.every().tuesday.at("10:00").do(main)
-    schedule.every().tuesday.at("14:00").do(main)
-    schedule.every().tuesday.at("20:00").do(main)
+    # # tuesday schedule
+    # schedule.every().tuesday.at("06:00").do(main)
+    # schedule.every().tuesday.at("10:00").do(main)
+    # schedule.every().tuesday.at("14:00").do(main)
+    # schedule.every().tuesday.at("20:00").do(main)
 
-    # wednesday schedule
-    schedule.every().wednesday.at("06:00").do(main)
-    schedule.every().wednesday.at("10:00").do(main)
-    schedule.every().wednesday.at("14:00").do(main)
-    schedule.every().wednesday.at("20:00").do(main)
+    # # wednesday schedule
+    # schedule.every().wednesday.at("06:00").do(main)
+    # schedule.every().wednesday.at("10:00").do(main)
+    # schedule.every().wednesday.at("14:00").do(main)
+    # schedule.every().wednesday.at("20:00").do(main)
 
-    # thursday schedule
-    schedule.every().thursday.at("06:00").do(main)
-    schedule.every().thursday.at("10:00").do(main)
-    schedule.every().thursday.at("14:00").do(main)
-    schedule.every().thursday.at("20:00").do(main)
+    # # thursday schedule
+    # schedule.every().thursday.at("06:00").do(main)
+    # schedule.every().thursday.at("10:00").do(main)
+    # schedule.every().thursday.at("14:00").do(main)
+    # schedule.every().thursday.at("20:00").do(main)
 
-    # friday schedule
-    schedule.every().friday.at("06:00").do(main)
-    schedule.every().friday.at("10:00").do(main)
-    schedule.every().friday.at("14:00").do(main)
-    schedule.every().friday.at("20:00").do(main)
+    # # friday schedule
+    # schedule.every().friday.at("06:00").do(main)
+    # schedule.every().friday.at("10:00").do(main)
+    # schedule.every().friday.at("14:00").do(main)
+    # schedule.every().friday.at("20:00").do(main)
 
-    # saturday schedule
-    schedule.every().saturday.at("06:00").do(main)
-    schedule.every().saturday.at("10:00").do(main)
-    schedule.every().saturday.at("14:00").do(main)
-    schedule.every().saturday.at("20:00").do(main)
+    # # saturday schedule
+    # schedule.every().saturday.at("06:00").do(main)
+    # schedule.every().saturday.at("10:00").do(main)
+    # schedule.every().saturday.at("14:00").do(main)
+    # schedule.every().saturday.at("20:00").do(main)
 
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    # while True:
+        # schedule.run_pending()
+        # time.sleep(1)
