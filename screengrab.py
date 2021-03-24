@@ -141,13 +141,16 @@ LOGGER.addHandler(file_handler)
 def get_time(h=None, m='0'):
     """Return time."""
     ret = ''
-    if isinstance(h, type(str())) and isinstance(m, type(str())):
-        h = int(h)
-        m = int(m)
-        if (h >= 0 and h < 24) and (m >= 0 and m < 60):
-            ret = '{0}:{1}'.format(
-                str(h).zfill(2),
-                str(m).zfill(2))
+    try:
+        if isinstance(h, type(str())) and isinstance(m, type(str())):
+            h = int(h)
+            m = int(m)
+            if (h >= 0 and h < 24) and (m >= 0 and m < 60):
+                ret = '{0}:{1}'.format(
+                    str(h).zfill(2),
+                    str(m).zfill(2))
+    except ValueError as ve:
+        LOGGER.warning("Une valeur du temps d'exécution est ignorée car invalide : %s", ve)
     return ret 
 
 
@@ -168,22 +171,33 @@ def get_execution_time(filename):
     and return a lists of days and hours.
     """
     _dict = {}
+    hours = []
     with open(filename, 'r', encoding='utf-8') as lines:
         for line in lines:
             line = line.strip()
             line = line.split(MAIN_SEP)
             _dict[get_lang_val(line[0])] = line[1].split(COMMA_SEP)
-    pprint(_dict)
-    print()
-
     days = [get_day(i) for i in _dict['day'] if get_day(i) != None]
-    print('days : ', end=' ')
-    pprint(days)
-    hours = set([get_time(j) for i in _dict['hour'] for j in (i.split(COLON_SEP)) if get_time(j) != ''])
-    print('hours: ', end=' ')
-    pprint(hours)
-    
+    for i in _dict['hour']:
+        val = get_time(*i.split(COLON_SEP))
+        if val != '':
+            hours.append(val)
     return days, hours
+
+
+def scheduler():
+    """
+    schedule.every().monday.at("06:00").do(main)    
+    """
+    # days, hours = get_execution_time(EXECUTION_TIME_FILE)
+    # for day in days:
+        # for hour in hours:
+            # set_trace()
+            # sch = f"schedule.every().{day}.('{hour}').do(main)"
+    exec("schedule.every().wednesday.at('02:47').do(main)")
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 
 def with_logging(func):
@@ -762,14 +776,7 @@ def add_flag(index, length):
 
 
 def message_with_attachments(msg, path_, files, a_template, lots=str()):
-    """Prepare message with an attachment.
-
-    19.1.1. email.message: Representing an email message:
-    https://docs.python.org/3.6/library/email.message.html#email.message.EmailMessage
-
-    How to Embed Images in Your Emails: The Facts:
-    https://sendgrid.com/blog/embedding-images-emails-facts/
-    """
+    """Prepare message with an attachment."""
     # feed the email with programs's main information
     html_table = stringify_main_info(files)
 
@@ -975,7 +982,7 @@ def main():
 
 
 if __name__ == '__main__':
-    get_execution_time(EXECUTION_TIME_FILE)
+    scheduler()
     # schedule.every(2).minutes.do(main)
     # # monday schedule
     # schedule.every().monday.at("06:00").do(main)
