@@ -40,7 +40,7 @@ Le créneau est formé de deux paramètres : le jour et l'heure d'exécution.
 
 * ouvrir le fichier `execution_time.inf` du répertoire conf :
 
-    - pour ajouter le jour d'exécution, repérer la ligne commençant par `jour=`, et saisir des jours parmi les sept jours de la semaine en les séparant par une virgule.
+    - pour ajouter le jour d'exécution, repérer la ligne commençant par `jour=`, et saisir le jour parmi les sept jours de la semaine en les séparant par une virgule.
         Ex. : jour=lundi,mardi,jeudi
     - pour ajouter l'heure d'exécution, repérer la ligne commençant par `heure=`, et saisir une heure dans le format suivant `hh:mm`.
         Ex. : heure=06:15,12:00,17:09

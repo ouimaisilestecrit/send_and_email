@@ -82,7 +82,7 @@ ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
 MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
-
+RUN = "schedule.every().{0}.at('{1}').do(main)"
 # separators
 MAIN_SEP = '='  # equal sign for main information
 WORD_SEP = '_'  # underscore for word's separator
@@ -107,7 +107,7 @@ TEMPLATE_DICT = OrderedDict([
 
 
 # days of week dictionary
-DAYS_OF_WEEK_DICT = OrderedDict([
+DAYS_TRANSLATION = OrderedDict([
     ('dimanche', 'sunday'),
     ('lundi', 'monday'),
     ('mardi', 'tuesday'),
@@ -116,7 +116,7 @@ DAYS_OF_WEEK_DICT = OrderedDict([
     ('vendredi', 'friday'),
     ('samedi', 'saturday')])
 
-LANG_DICT = OrderedDict([
+MAIN_TRANSLATION = OrderedDict([
     ('jour', 'day'),
     ('heure', 'hour')
 ])
@@ -154,47 +154,40 @@ def get_time(h=None, m='0'):
     return ret 
 
 
-def get_lang_val(lang=None):
-    """Return lang name."""
-    return LANG_DICT.get(lang, None)
+def get_param(param=None):
+    """Get parameter."""
+    return MAIN_TRANSLATION.get(param, None)
 
 
 def get_day(day=None):
-    """Return book name from its ordinal number."""
-    return DAYS_OF_WEEK_DICT.get(day, None)
+    """Get day."""
+    return DAYS_TRANSLATION.get(day, None)
 
 
-def get_execution_time(filename):
-    """Read execution time info.
+def get_user_settings(filename):
+    """Get execution info.
 
-    Function to read the execution time entries from a given file
+    Function to collect the user entries
     and return a lists of days and hours.
     """
     _dict = {}
-    hours = []
     with open(filename, 'r', encoding='utf-8') as lines:
         for line in lines:
             line = line.strip()
             line = line.split(MAIN_SEP)
-            _dict[get_lang_val(line[0])] = line[1].split(COMMA_SEP)
-    days = [get_day(i) for i in _dict['day'] if get_day(i) != None]
-    for i in _dict['hour']:
-        val = get_time(*i.split(COLON_SEP))
-        if val != '':
-            hours.append(val)
+            _dict[get_param(line[0].lower())] = line[1].split(COMMA_SEP)
+    days = [get_day(i.lower()) for i in _dict['day'] \
+		if get_day(i.lower()) != None]
+	hours = [get_time(*i.split(COLON_SEP)) for i in _dict['hour'] \
+		if get_time(*i.split(COLON_SEP)) != '']
     return days, hours
 
 
 def scheduler():
-    """
-    schedule.every().monday.at("06:00").do(main)    
-    """
-    # days, hours = get_execution_time(EXECUTION_TIME_FILE)
-    # for day in days:
-        # for hour in hours:
-            # set_trace()
-            # sch = f"schedule.every().{day}.('{hour}').do(main)"
-    exec("schedule.every().wednesday.at('02:47').do(main)")
+    """Schedule."""
+    days, hours = get_user_settings(EXECUTION_TIME_FILE)    
+    plans = [RUN.format(day, hour) for day in days for hour in hours]
+    _ = [exec(plan) for plan in plans]
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -983,43 +976,3 @@ def main():
 
 if __name__ == '__main__':
     scheduler()
-    # schedule.every(2).minutes.do(main)
-    # # monday schedule
-    # schedule.every().monday.at("06:00").do(main)
-    # schedule.every().monday.at("10:00").do(main)
-    # schedule.every().monday.at("14:00").do(main)
-    # schedule.every().monday.at("20:00").do(main)
-
-    # # tuesday schedule
-    # schedule.every().tuesday.at("06:00").do(main)
-    # schedule.every().tuesday.at("10:00").do(main)
-    # schedule.every().tuesday.at("14:00").do(main)
-    # schedule.every().tuesday.at("20:00").do(main)
-
-    # # wednesday schedule
-    # schedule.every().wednesday.at("06:00").do(main)
-    # schedule.every().wednesday.at("10:00").do(main)
-    # schedule.every().wednesday.at("14:00").do(main)
-    # schedule.every().wednesday.at("20:00").do(main)
-
-    # # thursday schedule
-    # schedule.every().thursday.at("06:00").do(main)
-    # schedule.every().thursday.at("10:00").do(main)
-    # schedule.every().thursday.at("14:00").do(main)
-    # schedule.every().thursday.at("20:00").do(main)
-
-    # # friday schedule
-    # schedule.every().friday.at("06:00").do(main)
-    # schedule.every().friday.at("10:00").do(main)
-    # schedule.every().friday.at("14:00").do(main)
-    # schedule.every().friday.at("20:00").do(main)
-
-    # # saturday schedule
-    # schedule.every().saturday.at("06:00").do(main)
-    # schedule.every().saturday.at("10:00").do(main)
-    # schedule.every().saturday.at("14:00").do(main)
-    # schedule.every().saturday.at("20:00").do(main)
-
-    # while True:
-        # schedule.run_pending()
-        # time.sleep(1)
