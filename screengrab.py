@@ -904,7 +904,6 @@ def main():
 
 
 if __name__ == '__main__':
-#    main()
     # schedule.every(2).minutes.do(main)
     # monday schedule
     schedule.every().monday.at("06:00").do(main)
