@@ -6,7 +6,6 @@ import logging
 import os
 import smtplib
 import sys
-import tempfile
 import time
 import traceback
 from collections import OrderedDict
@@ -14,9 +13,6 @@ from datetime import datetime as dt
 from email.message import EmailMessage
 from functools import reduce, wraps
 from string import Template
-
-from pdb import set_trace
-from pprint import pprint
 
 try:
     import pickle
@@ -82,13 +78,13 @@ ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
 MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
-RUN = "schedule.every().{0}.at('{1}').do(main)"
+SCHEDULE_INSTRUCTION = "schedule.every().{0}.at('{1}').do(main)"
 # separators
 MAIN_SEP = '='  # equal sign for main information
 WORD_SEP = '_'  # underscore for word's separator
 COMMA_SEP = ','  # comma sign
 COLON_SEP = ':'  # colon sign
- 
+
 # template dictionary of file's message and subjects
 TEMPLATE_DICT = OrderedDict([
     (0,
@@ -151,7 +147,7 @@ def get_time(h=None, m='0'):
                     str(m).zfill(2))
     except ValueError as ve:
         LOGGER.warning("Une valeur du temps d'exécution est ignorée car invalide : %s", ve)
-    return ret 
+    return ret
 
 
 def get_param(param=None):
@@ -173,17 +169,16 @@ def get_user_settings(filename):
             line = line.split(MAIN_SEP)
             _dict[get_param(line[0].lower())] = line[1].split(COMMA_SEP)
     days = [get_day(i.lower()) for i in _dict['day'] \
-        if get_day(i.lower()) != None]
+        if get_day(i.lower()) is not None]
     hours = [get_time(*i.split(COLON_SEP)) for i in _dict['hour'] \
         if get_time(*i.split(COLON_SEP)) != '']
     return days, hours
 
 
 def scheduler():
-    """Schedule execution time."""
-    days, hours = get_user_settings(EXECUTION_TIME_FILE)    
-    plans = [RUN.format(day, hour) for day in days for hour in hours]
-    _ = [exec(plan) for plan in plans]
+    """Execute scheduled time."""
+    days, hours = get_user_settings(EXECUTION_TIME_FILE)
+    _ = [exec(SCHEDULE_INSTRUCTION.format(d, h)) for d in days for h in hours]
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -198,6 +193,13 @@ def with_logging(func):
         print("LOG: Job %s completed" % func.__name__)
         return result
     return wrapper
+
+
+def create_dirs(*args):
+    """Create a directory if not exist."""
+    for folder in args:
+        if not os.path.exists(folder):
+            os.mkdir(folder)
 
 
 def grab(tmp, box):
@@ -636,8 +638,8 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
-    # receivers = 'mike.kabika@gmail.com, expertduneuf@hotmail.com'
-    receivers = ', '.join(get_emails(RECEIVERS_FILE))
+    receivers = 'mike.kabika@gmail.com, expertduneuf@hotmail.com'
+    # receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
     a_template = read_template(filename)
@@ -898,6 +900,28 @@ def send_direct_email(tmp, box):
     return state
 
 
+def check_size():
+    """Return the size limit of an email message."""
+    smtp = smtplib.SMTP(MAILBOX_HOST)
+    smtp.ehlo()
+    max_limit_in_bytes = int(smtp.esmtp_features['size'])
+    return max_limit_in_bytes
+
+
+def delete_dirs(*folders):
+    """Delete directories and files on them if exist."""
+    for folder in folders:
+        for ele in os.listdir(folder):
+            try:
+                os.remove(os.path.normpath(os.path.join(folder, ele)))
+            except FileNotFoundError:
+                pass
+        try:
+            os.rmdir(folder)
+        except FileNotFoundError:
+            pass
+
+
 def elapsed_time(duration):
     """Return the human readable elapsed time."""
     duration = int(duration)
@@ -916,27 +940,16 @@ def elapsed_time(duration):
     return ret
 
 
-def check_size():
-    """Return the size limit of an email message."""
-    smtp = smtplib.SMTP(MAILBOX_HOST)
-    smtp.ehlo()
-    max_limit_in_bytes = int(smtp.esmtp_features['size'])
-    return max_limit_in_bytes
-
-
 @with_logging
 def main():
     """Process the capture of pictures."""
     start = time.time()
-    # init_logger()
+    LOGGER.info("Lancement du processus")
+    # create directories
+    box = os.path.normpath(os.path.join(RESOURCES_DIR, 'box'))
+    tmp = os.path.normpath(os.path.join(RESOURCES_DIR, 'tmp'))
+    create_dirs(box, tmp)
     try:
-        LOGGER.info("Lancement du processus")
-        # create temporary directory
-        box_dir = tempfile.TemporaryDirectory(dir=RESOURCES_DIR)
-        box = box_dir.name
-        tmp_dir = tempfile.TemporaryDirectory(dir=RESOURCES_DIR)
-        tmp = tmp_dir.name
-
         nb_retries = 4  # number of attempts allowed after any failures
         while nb_retries > 0:
             LOGGER.info("Nb retries allowed: %d", nb_retries)
@@ -963,6 +976,8 @@ def main():
         LOGGER.error("Un arrêt est demandé : %s", se)
 
     finally:
+        # delete created directories
+        delete_dirs(box, tmp)
         print("\n> Fin du processus")
         LOGGER.info("Fin du processus")
         duration = elapsed_time(time.time() - start)
@@ -971,4 +986,5 @@ def main():
 
 
 if __name__ == '__main__':
-    scheduler()
+    main()
+    # scheduler()
