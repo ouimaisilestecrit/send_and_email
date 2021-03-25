@@ -165,11 +165,7 @@ def get_day(day=None):
 
 
 def get_user_settings(filename):
-    """Get execution info.
-
-    Function to collect the user entries
-    and return a lists of days and hours.
-    """
+    """Get execution time info."""
     _dict = {}
     with open(filename, 'r', encoding='utf-8') as lines:
         for line in lines:
@@ -184,7 +180,7 @@ def get_user_settings(filename):
 
 
 def scheduler():
-    """Schedule."""
+    """Schedule execution time."""
     days, hours = get_user_settings(EXECUTION_TIME_FILE)    
     plans = [RUN.format(day, hour) for day in days for hour in hours]
     _ = [exec(plan) for plan in plans]
@@ -975,4 +971,5 @@ def main():
 
 
 if __name__ == '__main__':
-    scheduler()
+    main()
+    # scheduler()
