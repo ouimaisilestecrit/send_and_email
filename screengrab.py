@@ -177,9 +177,9 @@ def get_user_settings(filename):
             line = line.split(MAIN_SEP)
             _dict[get_param(line[0].lower())] = line[1].split(COMMA_SEP)
     days = [get_day(i.lower()) for i in _dict['day'] \
-		if get_day(i.lower()) != None]
-	hours = [get_time(*i.split(COLON_SEP)) for i in _dict['hour'] \
-		if get_time(*i.split(COLON_SEP)) != '']
+        if get_day(i.lower()) != None]
+    hours = [get_time(*i.split(COLON_SEP)) for i in _dict['hour'] \
+        if get_time(*i.split(COLON_SEP)) != '']
     return days, hours
 
 
