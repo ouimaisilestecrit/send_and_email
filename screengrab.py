@@ -197,9 +197,7 @@ def with_logging(func):
 
 def create_dirs(*args):
     """Create a directory if not exist."""
-    for folder in args:
-        if not os.path.exists(folder):
-            os.mkdir(folder)
+    _ = [os.mkdir(folder) for folder in args if not os.path.exists(folder)]
 
 
 def grab(tmp, box):
@@ -638,8 +636,8 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
-    receivers = 'mike.kabika@gmail.com, expertduneuf@hotmail.com'
-    # receivers = ', '.join(get_emails(RECEIVERS_FILE))
+    # receivers = 'mike.kabika@gmail.com, expertduneuf@hotmail.com'
+    receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
     a_template = read_template(filename)
@@ -986,5 +984,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
-    # scheduler()
+    scheduler()
