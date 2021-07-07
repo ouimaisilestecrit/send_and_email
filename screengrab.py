@@ -49,7 +49,8 @@ NOT_AVAILABLE_TEMPLATE_FILENAME = "template_not_available.html"
 PICKLE_FILE = os.path.normpath(os.path.join(BIN_DIR, PICKLE_FILENAME))
 CONFIG_FILE = os.path.normpath(os.path.join(CONF_DIR, CONFIG_FILENAME))
 RECEIVERS_FILE = os.path.normpath(os.path.join(CONF_DIR, RECEIVERS_FILENAME))
-EXECUTION_TIME_FILE = os.path.normpath(os.path.join(CONF_DIR, EXECUTION_TIME_FILENAME))
+EXECUTION_TIME_FILE = os.path.normpath(
+    os.path.join(CONF_DIR, EXECUTION_TIME_FILENAME))
 MAIN_TEMPLATE_FILE = os.path.normpath(
     os.path.join(RESOURCES_DIR, MAIN_TEMPLATE_FILENAME))
 NO_PICTURE_TEMPLATE_FILE = os.path.normpath(
@@ -58,11 +59,11 @@ NOT_AVAILABLE_TEMPLATE_FILE = os.path.normpath(
     os.path.join(RESOURCES_DIR, NOT_AVAILABLE_TEMPLATE_FILENAME))
 
 # email credentials
-MAIL_LOGIN = os.environ['EDN_LOGIN']
-MAIL_PASSW = os.environ['EDN_PASSWORD']
+MAIL_LOGIN = os.environ['YOUTUBE_LOGIN']
+MAIL_PASSW = os.environ['YOUTUBE_PASSWORD']
 
 # email gateway parameters
-MAILBOX_HOST = 'smtp.office365.com'
+MAILBOX_HOST = 'smtp.gmail.com'
 MAILBOX_PORT = 587
 
 # website credentials
@@ -78,12 +79,15 @@ ERR_MSG = r"Une erreur critique est survenue sur votre site"
 HOME_URL = r"https://altarea-partenaires.com/accueil/"
 IMG_FILE_EXTENSION = '.png'
 MAX_FILE_SIZE = 157286400//15  # (157286400/15) / 1e6 = 10,48 Mo
-SCHEDULE_INSTRUCTION = "schedule.every().{0}.at('{1}').do(main)"
+SCHEDULE_CMD = "schedule.every().{0}.at('{1}').do(main)"
+
 # separators
 MAIN_SEP = '='  # equal sign for main information
 WORD_SEP = '_'  # underscore for word's separator
 COMMA_SEP = ','  # comma sign
 COLON_SEP = ':'  # colon sign
+GREATER_SEP = '>'  # greater than sign
+VAL_TO_STRIP = ".cls-1{fill:#562381}"
 
 # template dictionary of file's message and subjects
 TEMPLATE_DICT = OrderedDict([
@@ -100,7 +104,6 @@ TEMPLATE_DICT = OrderedDict([
     (2,
      [NOT_AVAILABLE_TEMPLATE_FILE,
       r"Alerte ! Problème de connexion sur Altarea Partenaires !"])])
-
 
 # days of week dictionary
 DAYS_TRANSLATION = OrderedDict([
@@ -146,7 +149,8 @@ def get_time(h=None, m='0'):
                     str(h).zfill(2),
                     str(m).zfill(2))
     except ValueError as ve:
-        LOGGER.warning("Une valeur du temps d'exécution est ignorée car invalide : %s", ve)
+        msg = "Une valeur du temps d'exécution est ignorée car invalide :"
+        LOGGER.warning("%s %s", msg, ve)
     return ret
 
 
@@ -178,7 +182,7 @@ def get_user_settings(filename):
 def scheduler():
     """Execute scheduled time."""
     days, hours = get_user_settings(EXECUTION_TIME_FILE)
-    _ = [exec(SCHEDULE_INSTRUCTION.format(d, h)) for d in days for h in hours]
+    _ = [exec(SCHEDULE_CMD.format(d, h)) for d in days for h in hours]
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -222,6 +226,8 @@ def grab(tmp, box):
             print(msg)
             sys.exit(msg)
         LOGGER.info("Page d'accueil : %s", driver.title)
+        # handle cookies choices
+        handle_cybot_modal(driver)
 
         # open your session
         if not connect(driver):
@@ -229,7 +235,6 @@ def grab(tmp, box):
             LOGGER.warning("%s", msg)
             state = False
             return None
-
         # handle the modal element
         locator = r"//*[@id='first_sign-in_modal']/div/div/div[1]/button"
         handle_modal(driver, locator)
@@ -285,10 +290,10 @@ def check_version(driver):
         v_drv = "Version de ChromeDriver"
         err = "Interruption du processus, veuillez mettre à jour ChromeDriver"
         maj = "Veuillez consulter le fichier README.md pour la mise à jour"
-        print("{} : {}".format(v_nav, browser_v))
-        print("{} : {}".format(v_drv, chrome_driver_v))
-        print(err)
-        print(maj)
+        print("\n> {} : {}".format(v_nav, browser_v))
+        print("> {} : {}".format(v_drv, chrome_driver_v))
+        print("> {}".format(err))
+        print("> {}".format(maj))
         LOGGER.error("%s : %s", v_nav, browser_v)
         LOGGER.error("%s : %s", v_drv, chrome_driver_v)
         LOGGER.error("%s", err)
@@ -411,6 +416,27 @@ def wait_signing_in(driver):
         return True
 
 
+def handle_cybot_modal(driver):
+    """Handle the modal element if present."""
+    dialog = r"//*[@id='CybotCookiebotDialog']"
+    wrapper = r"//*[@id='CybotCookiebotDialogBodyLevelButtonLevelOptinAllowallSelectionWrapper']"
+    try:
+        dialog_element = driver.find_element_by_xpath(dialog)
+        dialog_element.is_displayed()
+        LOGGER.info("La fenêtre de dialogue est affichée")
+        wrapper_element = driver.find_element_by_xpath(wrapper)
+        choices = wrapper_element.find_elements_by_tag_name('a')
+        for choice in choices:
+            if choice.text == 'Tout refuser':
+                LOGGER.info("Refus des cookies")
+                action = ActionChains(driver)
+                action.move_to_element(choice)
+                action.click().perform()
+                break
+    except:
+        LOGGER.warning("Il n'y a pas de fenêtre de dialogue")
+
+
 def handle_modal(driver, locator):
     """Handle the modal element if present."""
     try:
@@ -479,15 +505,16 @@ def fetch_main_data(driver, program, index, folder):
     """Fetch main program data."""
     LOGGER.info("Programme %d", index)
 
-    residence_name = get_text(program, r'font-regular')
+    fonts = program.find_elements_by_tag_name('h4')
+    residence_name = get_text(fonts[0], r'font-regular text-capitalize')
     LOGGER.info("Résidence : %s", residence_name)
 
-    commune_name = get_text(program, r'font-bold')
+    commune_name = get_text(fonts[1], r'font-bold text-capitalize')
     LOGGER.info("Commune : %s", commune_name)
 
     nb_logement = get_text(program, r'highlight-keys')
-    long_nb_logement = ' '.join(nb_logement.split('\n'))
-    LOGGER.info("Nb logement dispo : %s", long_nb_logement)
+    nb_logement = get_nb_logement(nb_logement)
+    LOGGER.info("Nb logement dispo : %s", nb_logement)
 
     # move element to program to capture
     xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
@@ -504,19 +531,39 @@ def fetch_main_data(driver, program, index, folder):
                    'main': MAIN_SEP,
                    'city': WORD_SEP.join(commune_name.split()),
                    'size': WORD_SEP.join(
-                       str(nb_logement.split('\n')[0]).split())})))
+                       nb_logement.split())})))
     LOGGER.info("Nom du fichier : %s", os.path.basename(filename))
     driver.get_screenshot_as_file(filename)
     time.sleep(2)
     LOGGER.info("Fin du programme \n")
 
 
-def get_text(driver, locator):
+def get_nb_logement(string):
+    """Return a string."""
+    string = string.strip()
+    if VAL_TO_STRIP in string:
+        string = string.split(VAL_TO_STRIP)[1]
+    if GREATER_SEP in string:
+        string = string.split(GREATER_SEP)[0]
+    string = string.strip()
+    if "logements" in string:
+        lst = string.split()
+        index = lst.index("logements")
+        return ' '.join(lst[index-1:index+2])
+    if "Dernier" in string:
+        lst = string.split()
+        index = lst.index("Dernier")
+        return ' '.join(lst[index:index+3])
+    return "Peut-être le dernier logement disponible"
+
+
+def get_text(element, class_attrib):
     """Return text if available."""
     try:
-        return driver.find_element_by_class_name(locator).text
+        _ = element.get_attribute('class') == class_attrib
+        return element.text
     except:
-        return "Peut-être le dernier logement disponible"
+        return "Pas d'information"
 
 
 def wait_next_page(driver, page, t=1):
@@ -552,6 +599,7 @@ def dispatch(tmp, box):
     # comparison
     program = find_program(former, stream)
     if isinstance(program, type(None)):
+        print("Pas d'envoi de courriel")
         LOGGER.info("Pas d'envoi de courriel")
         # LOGGER.info("Aucun changement, envoi du courriel approprié")
         # send_mail(*TEMPLATE_DICT[1], box, len_tmp)
@@ -636,7 +684,6 @@ def find_program(former, stream):
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
     # read receivers
-    # receivers = 'mike.kabika@gmail.com, expertduneuf@hotmail.com'
     receivers = ', '.join(get_emails(RECEIVERS_FILE))
     LOGGER.info("Destinataires : %s", receivers)
     # read template
@@ -784,7 +831,8 @@ def message_with_attachments(msg, path_, files, a_template, lots=str()):
 def stringify_main_info(lst):
     """Convert list of a program's main information as a string."""
     tab_html = []
-    tab_div = '<div style="margin:0;padding:0;color:#5a6883;line-height:20px;text-align:left;">{}</div>'
+    tab_div = '<div style="margin:0;padding:0;color:#5a6883;line-height:20px;\
+text-align:left;">{}</div>'
     data = """\
     <div>
         <legend>
@@ -830,14 +878,18 @@ def add_attach(msg, filenames, main_type='image'):
 
 def send(msg):
     """Send the email via our own SMTP server."""
-    # Terminate the SMTP session and close the connection
-    with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
-        # enable security
-        s.starttls()
-        # login with email credential
-        s.login(MAIL_LOGIN, MAIL_PASSW)
-        s.send_message(msg)
-    del msg
+    try:
+        # Terminate the SMTP session and close the connection
+        with smtplib.SMTP(host=MAILBOX_HOST, port=MAILBOX_PORT) as s:
+            # enable security
+            s.starttls()
+            # login with email credential
+            s.login(MAIL_LOGIN, MAIL_PASSW)
+            s.send_message(msg)
+    except smtplib.SMTPAuthenticationError as sae:
+        LOGGER.error("Un problème est survenu : %s", sae)
+    finally:
+        del msg
 
 
 def message_without_attachment(msg, a_template):
@@ -872,6 +924,8 @@ def send_direct_email(tmp, box):
         driver.get(ALTAREA_URL)
         wait_loading(driver)
         LOGGER.info("Chargement de la page d'accueil : %s", driver.title)
+        # handle cookies choices
+        handle_cybot_modal(driver)
 
         # open your session
         if not connect(driver, 3):
@@ -948,7 +1002,7 @@ def main():
     tmp = os.path.normpath(os.path.join(RESOURCES_DIR, 'tmp'))
     create_dirs(box, tmp)
     try:
-        nb_retries = 4  # number of attempts allowed after any failures
+        nb_retries = 3  # number of attempts allowed after any failures
         while nb_retries > 0:
             LOGGER.info("Nb retries allowed: %d", nb_retries)
             # launch grab & dispatch
