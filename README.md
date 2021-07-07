@@ -26,7 +26,7 @@
 
 ## Comment mettre à jour Webdriver de Chrome :
 
-* aller sur internet, au site de téléchargement de Webdriver : `https://chromedriver.chromium.org/downloads`,
+* aller sur internet, au site de téléchargement de Webdriver : https://chromedriver.chromium.org/downloads,
 * puis télécharger une version correspondant à celle de votre navigateur Chrome :
     Exemple : `Si le numéro de la version de Chrome est 88, alors veuillez télécharger la version de ChromeDriver 88.0.4324.96`
 * ouvrir le répertoire de téléchargement, faire un clic droit sur "chromedriver.exe" et choisir copier
