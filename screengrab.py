@@ -172,10 +172,10 @@ def get_user_settings(filename):
             line = line.strip()
             line = line.split(MAIN_SEP)
             _dict[get_param(line[0].lower())] = line[1].split(COMMA_SEP)
-    days = [get_day(i.lower()) for i in _dict['day'] \
-        if get_day(i.lower()) is not None]
-    hours = [get_time(*i.split(COLON_SEP)) for i in _dict['hour'] \
-        if get_time(*i.split(COLON_SEP)) != '']
+    days = [get_day(i.lower()) for i in _dict['day']
+            if get_day(i.lower()) is not None]
+    hours = [get_time(*i.split(COLON_SEP)) for i in _dict['hour']
+             if get_time(*i.split(COLON_SEP)) != '']
     return days, hours
 
 
@@ -239,9 +239,14 @@ def grab(tmp, box):
         locator = r"//*[@id='first_sign-in_modal']/div/div/div[1]/button"
         handle_modal(driver, locator)
 
+        # # search by region of concern
+        # LOGGER.info("Lancement de la recherche par critères")
+        # select_idf_region(driver)
+
         # search by region of concern
-        LOGGER.info("Lancement de la recherche par critères")
-        select_idf_region(driver)
+        LOGGER.info("Lancement des résultats par programme")
+        select_region(driver)
+        wait_loading(driver)
 
         # collect data
         programs_element = driver.find_element_by_id('results-prog')
@@ -252,8 +257,10 @@ def grab(tmp, box):
             LOGGER.info("Les %d photos sont sauvegardées", number_programs)
             state = True
         else:
-            LOGGER.info("%d photos sur %d sauvegardées", num, number_programs)
-            state = False
+            count = number_programs - num
+            msg = "{} : programme(s) non sauvegardé(s)".format(count)
+            LOGGER.info("%s", msg)
+            sys.exit(msg)
 
     except Exception:
         string = traceback.format_exc()
@@ -472,6 +479,17 @@ def select_idf_region(driver, region=REGION_ILE_DE_FRANCE):
         time.sleep(3)
 
 
+def select_region(driver):
+    """Select all region."""
+    LOGGER.info("Chargement des programmes de toutes les régions")
+    # go to region/department's combo box
+    buttons = driver.find_elements_by_tag_name('button')
+    for button in buttons:
+        if button.get_attribute('name') == 'program':
+            button.click()
+            break
+
+
 def get_program_data(driver, all_programs, folder):
     """Get program data."""
     LOGGER.info("Quantité des programmes immobiliers : %d\n", all_programs)
@@ -479,11 +497,14 @@ def get_program_data(driver, all_programs, folder):
 
     # collect programs within a page
     for page in range(pages):
-        programs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
-        for i, a_program in enumerate(programs):
-            LOGGER.info("Page %d sur %d", page+1, pages)
-            fetch_main_data(driver, a_program, i+1, folder)
-        LOGGER.info("Fin des programmes de la page : %d\n", page+1)
+        progs = driver.find_elements_by_xpath("//*[@id='results-prog']/div")
+        curr_page = page+1
+        total_p = len(progs)
+        for index, prog in enumerate(progs, start=1):
+            tab = [index, curr_page, total_p]
+            LOGGER.info("Page %d sur %d", tab[1], pages)
+            fetch_main_data(driver, prog, folder, tab)
+        LOGGER.info("Fin des programmes de la page : %d\n", curr_page)
 
         # avoid to click next button on the last page
         if page != pages-1:
@@ -501,45 +522,47 @@ def number_of_page(ele, per_page):
     return num
 
 
-def fetch_main_data(driver, program, index, folder):
+def fetch_main_data(driver, program, folder, tab):
     """Fetch main program data."""
-    LOGGER.info("Programme %d", index)
+    LOGGER.info("Programme %d/%d", tab[0], tab[2])
 
     fonts = program.find_elements_by_tag_name('h4')
-    residence_name = get_text(fonts[0], r'font-regular text-capitalize')
-    LOGGER.info("Résidence : %s", residence_name)
+    residence = get_text(fonts[0], r'font-regular text-capitalize')
+    LOGGER.info("Résidence : %s", residence)
 
-    commune_name = get_text(fonts[1], r'font-bold text-capitalize')
-    LOGGER.info("Commune : %s", commune_name)
+    commune = get_text(fonts[1], r'font-bold text-capitalize')
+    LOGGER.info("Commune : %s", commune)
 
-    nb_logement = get_text(program, r'highlight-keys')
-    nb_logement = get_nb_logement(nb_logement)
-    LOGGER.info("Nb logement dispo : %s", nb_logement)
+    logement = get_text(program, r'highlight-keys')
+    logement = search_in(logement)
+    LOGGER.info("Nb logement dispo : %s", logement)
 
     # move element to program to capture
     xpath_tmpl = r"//*[@id='results-prog']/div[{}]/div/div[2]"
     action = ActionChains(driver)
-    ele = program.find_element_by_xpath(xpath_tmpl.format(index))
+    ele = program.find_element_by_xpath(xpath_tmpl.format(tab[0]))
     action.move_to_element(ele).perform()
     time.sleep(2)
 
     # save screenshot with its appropiate filename
-    filename = os.path.normpath(
-        os.path.join(
-            folder, "{name}{main}{city}{main}{size}.png".format(
-                **{'name': WORD_SEP.join(residence_name.split()),
-                   'main': MAIN_SEP,
-                   'city': WORD_SEP.join(commune_name.split()),
-                   'size': WORD_SEP.join(
-                       nb_logement.split())})))
+    filename = os.path.normpath(os.path.join(folder, "{0}={1}={2}.png".format(
+        WORD_SEP.join(repl(residence).split()),   # name
+        WORD_SEP.join(commune.split()),           # city
+        WORD_SEP.join(repl(logement).split()))))  # size
     LOGGER.info("Nom du fichier : %s", os.path.basename(filename))
     driver.get_screenshot_as_file(filename)
     time.sleep(2)
     LOGGER.info("Fin du programme \n")
 
 
-def get_nb_logement(string):
-    """Return a string."""
+def repl(text):
+    """Replace forbidden character in title."""
+    text = text.replace('/', '-')
+    return text
+
+
+def search_in(string):
+    """Search logement info in a string."""
     string = string.strip()
     if VAL_TO_STRIP in string:
         string = string.split(VAL_TO_STRIP)[1]
@@ -683,9 +706,6 @@ def find_program(former, stream):
 
 def send_mail(filename, sub, folder, length=None, size=None):
     """Send email with attachments."""
-    # read receivers
-    receivers = ', '.join(get_emails(RECEIVERS_FILE))
-    LOGGER.info("Destinataires : %s", receivers)
     # read template
     a_template = read_template(filename)
     if isinstance(length, type(int())):
@@ -701,7 +721,7 @@ def send_mail(filename, sub, folder, length=None, size=None):
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = MAIL_LOGIN
-    msg['To'] = receivers
+    msg['To'] = ', '.join(get_emails(RECEIVERS_FILE))
     msg.preamble = 'You will not see this in a MIME-aware mail reader.\n'
 
     # detect kind of message to process allowing to size
@@ -717,8 +737,8 @@ def send_mail(filename, sub, folder, length=None, size=None):
         if current_size > MAX_FILE_SIZE:
             lots = share_by_lots(folder)
             LOGGER.info("Traitement de message par %d envois", len(lots))
-            for i, a_lot in enumerate(lots):
-                flag = add_flag(i+1, len(lots))
+            for i, a_lot in enumerate(lots, start=1):
+                flag = add_flag(i, len(lots))
                 msg.replace_header('Subject', "{} - {}".format(subject, flag))
                 message_with_attachments(msg, path_, a_lot, a_template, flag)
 
@@ -840,13 +860,13 @@ text-align:left;">{}</div>'
         </legend>
         <img src="cid:{2}" style="width:100%;">
     </div>"""
-    for i, item_filename in enumerate(sorted(lst)):
+    for i, item_filename in enumerate(sorted(lst), start=1):
         f_name = rename(os.path.basename(item_filename))
         item = item_filename.split(IMG_FILE_EXTENSION)[0]
         item = [' '.join(i.split(WORD_SEP)) for i in item.split(MAIN_SEP)]
         tab_html.append(data.format(
             '<strong>{0}.</strong> {1} - {2} : '.format(
-                str(i+1).rjust(2), item[0], item[1]), item[2], f_name))
+                str(i).rjust(2), item[0], item[1]), item[2], f_name))
     html_str = ''.join(['{}\n\n'.format(i) for i in tab_html])
     html_str = tab_div.format(html_str)
     return html_str
@@ -1038,4 +1058,5 @@ def main():
 
 
 if __name__ == '__main__':
-    scheduler()
+    main()
+    # scheduler()
