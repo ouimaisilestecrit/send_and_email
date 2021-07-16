@@ -502,7 +502,8 @@ def get_program_data(driver, all_programs, folder):
         total_p = len(progs)
         for index, prog in enumerate(progs, start=1):
             tab = [index, curr_page, total_p]
-            LOGGER.info("Page %d sur %d", tab[1], pages)
+            LOGGER.info("Page %d/%d - Programme %d/%d",
+                        tab[1], pages, tab[0], tab[2])
             fetch_main_data(driver, prog, folder, tab)
         LOGGER.info("Fin des programmes de la page : %d\n", curr_page)
 
@@ -524,8 +525,6 @@ def number_of_page(ele, per_page):
 
 def fetch_main_data(driver, program, folder, tab):
     """Fetch main program data."""
-    LOGGER.info("Programme %d/%d", tab[0], tab[2])
-
     fonts = program.find_elements_by_tag_name('h4')
     residence = get_text(fonts[0], r'font-regular text-capitalize')
     LOGGER.info("Résidence : %s", residence)
@@ -549,10 +548,9 @@ def fetch_main_data(driver, program, folder, tab):
         WORD_SEP.join(repl(residence).split()),   # name
         WORD_SEP.join(commune.split()),           # city
         WORD_SEP.join(repl(logement).split()))))  # size
-    LOGGER.info("Nom du fichier : %s", os.path.basename(filename))
+    LOGGER.info("Nom du fichier : %s\n", os.path.basename(filename))
     driver.get_screenshot_as_file(filename)
     time.sleep(2)
-    LOGGER.info("Fin du programme \n")
 
 
 def repl(text):
